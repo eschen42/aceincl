@@ -1,0 +1,213 @@
+$ifndef _fieldedDataFile_
+############################################################################
+#
+#   File:     fieldedDataFile.icn
+#
+#   Subject:  Procedures to produce logical lines or fields from 
+#             formatted data files
+#
+#   Author:   Arthur C. Eschenlauer
+#
+#   Date:     September 8, 2021
+#
+############################################################################
+#
+#   This file is in the public domain.
+#
+#   SPDX-License-Identifier: CC-PDDC
+#     https://spdx.org/licenses/CC-PDDC.html
+#
+############################################################################
+#
+#   record FieldedData(lines, fields)
+#     A record that holds two co-expression factories
+#
+#   procedure FieldedDataFactory(format, filePath) :  FieldedData
+#     Returns FieldedData for file at filePath according to specified format
+#
+#   procedure tabularLines(f) : C
+#     Procduce co-expression that produces logical lines of a tabular file
+#
+#   procedure tabularFields(line, sep) : C
+#     Procduce co-expression that produces fields from a logical line of a
+#     tabular file
+#
+#   procedure iniLines(f) : C
+#     Procduce co-expression that produces logical lines of an INI file
+#
+#   procedure iniFields(line) : C
+#     Procduce co-expression that produces fields from a logical line
+#     of an INI file
+#
+#   procedure getIni(ini) : T (string -> T (string -> x))
+#     Produce  a table of tables from an INI file
+#
+#   procedure alterExtension(fn, old_ex, new_ex) : s
+#     Produce fn, substituting new_ex for old_ex
+#
+############################################################################
+#
+#   links: regexp
+#
+############################################################################
+
+link regexp # for regular expressions to support alterExtension
+
+# FieldedData organizes functions that create co-expressions producing
+#   logical lines and fields within a logical line from tabular data
+record FieldedData(lines, fields) #: record holding two co-expression factories
+
+# FieldedDataFactory produces FieldedData populated according to format;
+#   as of now, only "tabular" format is supported
+procedure FieldedDataFactory(format, filePath) #: produce FieldedData for format
+  return case format of {
+    # eventually add support for CSV and who knows what else
+    "tabular" : FieldedData(tabularLines, tabularFields)
+    "ini" : FieldedData(iniLines, iniFields)
+    default : stop("FieldedDataFactory: Unknown format \"" || format || "\" for file " || filePath)
+    }
+end
+
+# create co-expression that, for each activation, transmits to &source a
+#   logical line of a tab-separated-values file
+procedure tabularLines(f) #: factory for C producing logical lines of a tabular file
+  local line
+  return create
+    every line := !f
+      do {
+        line @ &source
+      }
+end
+
+# create co-expression that, for each activation, transmits to &source a
+#   field from a logical line of a tab-separated-values file
+procedure tabularFields(line, sep) #: factory for C producing fields from a logical line of a tabular file
+  local field
+  /sep := '\t'
+  return create {
+      line ? while ( not pos(0)
+                   , field := tab(upto('\t') | 0)
+                   , field @ &source
+                   , move(1)
+                   )
+      if line[-1:0] == '\t'
+        then "" @ &source
+      &fail
+    }
+end
+
+# create co-expression that, for each activation, transmits to &source a
+#   "logical line" of an INI file; note that this is in fact a list
+#   whose first member is the section title (if any) and the rest of the
+#   members are each key=value pair in the section.
+#   Note well:
+#   - Values must either be numeric or begin and end with a double quote.
+#   - There is no need to escape internal double quotes.
+#   - Because there are no escapes at all, values must be contained on a
+#     single line.
+
+$define ini_line_default "default"
+procedure iniLines(f) #: factory for C producing logical lines of an INI file
+  local line, heading, logical
+  heading := ini_line_default
+  logical := [ini_line_default]
+  return create {
+      every line := !f
+        do {
+          # comments must have semicolon in first column
+          line ? match(";") & next
+          # produce sections (logical lines) having at least one key-value-pair
+          ( line ? tab(match("[")) || (heading <- tab(upto(']'))) || move(1)
+          , if *logical > 1
+              then ( logical @ &source
+                   , logical := [heading]
+                   )
+              else logical := [heading]
+          ) & next
+          # put key value pairs (unparsed) onto list, allowing empty values
+          line ? put( logical
+                    , tab(upto('= \t')) || ("=" == move(1)) || (tab(0))
+                    ) & next
+          # non-blank lines cause abort
+          line ? upto(&cset -- ' \t') & stop("iniLines: bad INI line:\n" || line)
+          # blank lines should be ignored
+        }
+      if *logical > 1
+        then logical @ &source
+      &fail @ &source
+    }
+end
+
+# create co-expression that, for each activation, transmits to &source a
+#   key-value pair from a logical line of an INI file, producing the first
+#   field as a string and the rest as [string key, string value]
+procedure iniFields(line) #: factory for C producing fields from a logical line of an INI file
+  local kvp_key, kvp_value, kvp, section
+  return create {
+      (section := get(line)) @ &source
+      while kvp := get(line) do kvp ? {
+        if (kvp_key := tab(upto('='))) || move(1) ||
+            (      ="\"" || (kvp_value := tab(-1)) || "\"" | # match string
+                     (kvp_value := numeric(tab(0)))          # match numeric
+            )
+          then [kvp_key, kvp_value] @ &source
+          else stop("iniFields: bad key-value pair in section [" ||
+                      section || "]: " || kvp)
+      }
+    }
+end
+
+$ifndef tbl_ini_default
+  $define tbl_ini_default "default"
+$endif
+
+procedure getIni(ini) #: parse an INI file into a table of tables
+  # ini             # the path to the INI named after the &progname
+  local f           # the file returned by open(ini)
+  local l           # a line from f
+  local tbl_ini     # the table-of-tables holding the parsed INI, maping
+                    #   section names to tables of key-value pairs
+  local section_ce  # co-expression producing logical lines from f
+  local line        # logical line produced by section_ce
+  local kvp_ce      # coexpression producing fields from line
+  local section     # first member of logical line
+  local kvp         # key-value pair from non-first members of logical line
+  local fieldedData # a FieldedData record having two members:
+  #       lines  - co-expression producing logical lines from source data file
+  #       fields - co-expression producing fields from source data file lines
+
+  tbl_ini := table()
+  tbl_ini[tbl_ini_default] := table()
+  fieldedData := FieldedDataFactory("ini", ini)
+  if f := open(ini, "r") | stop("getIni: failed to open file " || ini)
+    then {
+      section_ce := fieldedData.lines(f)
+      while line := @section_ce do {
+        $ifdef DEBUG_getIni
+          write("*line = ", *line)
+        $endif
+        kvp_ce := fieldedData.fields(line)
+        tbl_ini[@kvp_ce] := section := table()
+        while kvp := @kvp_ce do section[kvp[1]] := kvp[2]
+      }
+  }
+  close(f)
+
+$ifdef DEBUG_getIni
+  write("*tbl_ini = ", *tbl_ini)
+  every f := key(tbl_ini)
+    do write("*tbl_ini[", f, "] = ", *(tbl_ini[f]))
+  write(xencode(tbl_ini,StringFile(""),WriteString).s)
+$endif
+  return tbl_ini
+end
+
+procedure alterExtension(fn, old_ex, new_ex) #: change extension of file name
+  ReCaseIndependent()
+  fn ? return {
+           tab(ReFind("[.]" || old_ex || "$"))
+         } || "." || new_ex
+end
+
+$define _fieldedDataFile_
+$endif # _fieldedDataFile_
