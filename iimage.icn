@@ -3,7 +3,7 @@ $ifndef _iimage_
 #
 #        File:     iimage.icn
 #
-#        Subject:  Procedures to produce inclusion fragments for Icon 
+#        Subject:  Procedures to produce inclusion fragments for Icon
 #                  programs from structured data
 #
 #        Author:   Arthur C. Eschenlauer
@@ -32,7 +32,7 @@ $ifndef _iimage_
 #    Using iimage(), successively writes the images of x1, x2, ..., xn to
 #    f if it specifies a file; otherwise, to &errout.
 #
-#       
+#
 #  Example 1 - The following code:
 #
 #       # put values onto default list
@@ -41,15 +41,15 @@ $ifndef _iimage_
 #       t["baz"] := "fie"
 #       t[["foe"]] := "fum"
 #       write(iimage(t))
-#      
-#  writes the following to &output:
+#
+#  writes the following to &output (omitting error checking):
 #
 #       $ifdef IIMAGE_LOCAL
 #       local T32
 #       local L128
 #       local L127
 #       $endif # IIMAGE_LOCAL
-#       
+#
 #       $ifdef IIMAGE_DATA
 #       T32 := table({
 #           L127 := list(2)
@@ -64,46 +64,47 @@ $ifndef _iimage_
 #           L128
 #         }] := "fum"
 #       $endif # IIMAGE_DATA
-#       
-#       
+#
+#
 #  Example 2 - The following code:
-#      
+#
 #       t := table() ; t["one"] := 1 ; t["two"] := 2
 #       idump(&output, "A table",t)
 #
-#  writes the following to &output:
+#  writes the following to &output (omitting error checking):
 #
 #       $ifdef IIMAGE_DATA
 #       x10 := "A table"
 #       $endif # IIMAGE_DATA
-#       
+#
 #       $ifdef IIMAGE_LOCAL
 #       local T36
 #       $endif # IIMAGE_LOCAL
-#       
+#
 #       $ifdef IIMAGE_DATA
 #       T36 := table(&null)
 #         T36["one"] := 1
 #         T36["two"] := 2
 #       $endif # IIMAGE_DATA
-#       
-#       
+#
+#
 #  Example 3 - The following code:
 #
 #       idump(&output, "A list",[3,1,3,[2,4,6],3,4,3,5])
 #
-#  writes the following to &output (note that iimage() infers the
-#  predominant list element value and avoids excessive output):
+#  writes the following to &output (omitting error checking).
+#  (Note that iimage() infers the predominant list element
+#  value and avoids excessive output):
 #
 #       $ifdef IIMAGE_DATA
 #       x11 := "A list"
 #       $endif # IIMAGE_DATA
-#       
+#
 #       $ifdef IIMAGE_LOCAL
 #       local L159
 #       local L158
 #       $endif # IIMAGE_LOCAL
-#       
+#
 #       $ifdef IIMAGE_DATA
 #       L159 := list(8,3)
 #         L159[2] := 1
@@ -115,23 +116,23 @@ $ifndef _iimage_
 #         L159[6] := 4
 #         L159[8] := 5
 #       $endif # IIMAGE_DATA
-#       
-#       
+#
+#
 #  Example 4 - The following code:
-#      
+#
 #       # globally declared: record foo(bar, baz)
 #       write(iimage(foo(7,"eleven")))
 #
-#  writes the following to &output:
+#  writes the following to &output (omitting error checking):
 #
 #       $ifdef IIMAGE_GLOBAL
 #       record foo(bar,baz)
 #       $endif # IIMAGE_GLOBAL
-#       
+#
 #       $ifdef IIMAGE_LOCAL
 #       local R_foo_1
 #       $endif # IIMAGE_LOCAL
-#       
+#
 #       $ifdef IIMAGE_DATA
 #       R_foo_1 := foo()
 #         R_foo_1.bar := 7
@@ -139,13 +140,36 @@ $ifndef _iimage_
 #       $endif # IIMAGE_DATA
 #
 ############################################################################
+#
+#  Bugs:
+#
+#  - The code reveals structure primarily rather than ensuring that all
+#    dependencies are met; consequently, it is possible to construct data
+#    structures where elements may be referenced before they are
+#    initialized, since indexes and default values can themselves be
+#    structures.  For example, the "foo" record instance in the code below
+#    is constructed at the wrong level, resulting in "R_foo_1 is null" when
+#    the code is included elsewhere:
+#
+#      record foo(bar, baz)
+#      # ...
+#      procedure main()
+#        ini := foo("bar","baz")
+#        t := table(set(list(5,ini)))
+#        t[list(3,["foo", "bing"])] := ini
+#        write( iimage( t ) )
+#      end
+#
+#    "Ordinary" data structures without circular references may not have
+#    such problems.
+#
+############################################################################
 
 $ifndef SPCS
 $define SPCS "  "
-$endif
-
+$endif # SPCS
 procedure iimage(x,indent,done)  #: string image of value x
-  local i,s,ss,state,t,xtag,tp,sn,sz
+  local i,j,s,ss,state,t,xtag,tp,sn,sz
   local gtag   # a single global declaration
   local ltag   # a single local declaration
   local gdecl  # global declarations
@@ -190,7 +214,7 @@ procedure iimage(x,indent,done)  #: string image of value x
      ) || indent || SPCS
   ss := ""
   tp := type(x)
-  s := if xtag := \done[x] then xtag else case tp of {
+  s := if xtag := \done[x] then "(\\" || xtag || " | stop(FILE_LINE,name(" || xtag || "),\" is null\"))" else case tp of {
     #
     #  Unstructured types just return their image().
     #
@@ -222,25 +246,29 @@ procedure iimage(x,indent,done)  #: string image of value x
       if s[2] > *x / 3 & s[2] > 2 then {
         s := s[1]
         t := (xrslt := iimage(s, indent || SPCS, done), gdecl ||:= pop(xrslt), ldecl ||:= pop(xrslt), pop(xrslt))
-        if t ? (not any('\'"') & ss := tab(find(" :="))) then
+        if t ? (not any('\'"') & ss := tab(find(" :=")))
+          then
             $ifndef DEBUG
-            t := "{" || t || ss || indent || "}"
+            t := "{" || t || ( ss ? tab(upto('/'))||(move(1),"(\\")||(i:=tab(0))||" | stop(FILE_LINE,name(" || i || "),\" is null\"))" ) || indent || "}"
             $else
-            t := "L{" || t || ss || indent || "}"
+            t := "L{" || t || ( ss ? tab(upto('/'))||(move(1),"\\")||tab(0) ) || indent || "}"
             $endif # DEBUG
-        }
-      else s := t := &null
+         # else
+         #   t := "2(t," || t || ",t)"
+      } else {
+        s := t := &null
+      }
       #
       #  Output the non-defaulted elements of the list.
       #
       ss := ""
       every i := 1 to *x do if x[i] ~=== s then {
-        ss ||:= indent || xtag || "[" || i || "] := " ||
+        ss ||:= indent || "(\\" || xtag || " | stop(FILE_LINE,name(" || xtag || "),\" is null\"))[" || i || "] := " ||
             (xrslt := iimage(x[i],indent || SPCS,done), gdecl ||:= pop(xrslt), ldecl ||:= pop(xrslt), pop(xrslt))
         }
-      s := tp || sz
+      s := tp || sz # "2(\"sz\"," || sz || ",\"sz\")"
       s[-1:-1] := "," || \t
-      indent[1:-*SPCS] || xtag || " := " || s || ss
+      indent[1:-*SPCS] || "/" || xtag || " := " || s || ss
       }
     #
     #  Set.
@@ -260,9 +288,9 @@ procedure iimage(x,indent,done)  #: string image of value x
             $else
             t := "S{" || t || s || indent || "}"
             $endif
-        ss ||:= indent || "insert(" || xtag || "," || t || ")"
+        ss ||:= indent || "insert(" || "(\\" || xtag || " | stop(FILE_LINE,name(" || xtag || "),\" is null\"))," || t || ")"
         }
-      indent[1:-*SPCS] || xtag || " := " || "set()" || ss
+      indent[1:-*SPCS] || "/" || xtag || " := " || "set()" || ss
       }
     #
     #  Table.
@@ -282,11 +310,11 @@ procedure iimage(x,indent,done)  #: string image of value x
         t := (xrslt := iimage(i[1],indent || SPCS,done), gdecl ||:= pop(xrslt), ldecl ||:= pop(xrslt), pop(xrslt))
         if t ? (not any('\'"') & s := tab(find(" :="))) then
             $ifndef DEBUG
-            t := "{" || t || s || indent || "}"
+            t := "{" || t || ( s ? tab(upto('/'))||(move(1),"(\\")||(j:=tab(0))||" | stop(FILE_LINE,name(" || j || "),\" is null\"))" )  || indent || "}"
             $else
-            t := "Ts{" || t || s || indent || "}"
+            t := "Ts{" || t || ( s ? tab(upto('/'))||(move(1),"\\")||tab(0) ) || indent || "}"
             $endif
-        ss ||:= indent || xtag || "[" ||
+        ss ||:= indent || "(\\" || xtag || " | stop(FILE_LINE,name(" || xtag || "),\" is null\"))[" ||
             t || "] := " ||
             (xrslt := iimage(i[2],indent || SPCS,done), gdecl ||:= pop(xrslt), ldecl ||:= pop(xrslt), pop(xrslt))
         }
@@ -297,11 +325,11 @@ procedure iimage(x,indent,done)  #: string image of value x
       t := (xrslt := iimage(x[[]],indent || SPCS,done), gdecl ||:= pop(xrslt), ldecl ||:= pop(xrslt), pop(xrslt))
       if t ? (not any('\'"') & s := tab(find(" :="))) then
           $ifndef DEBUG
-          t := "{" || t || s || indent || "}"
+          t := "{" || t || ( s ? tab(upto('/'))||(move(1),"(\\")||(i:=tab(0))||" | stop(FILE_LINE,name(" || i || "),\" is null\"))" ) || indent || "}"
           $else
-          t := "Td{" || t || s || indent || "}"
+          t := "Td{" || t || ( s ? tab(upto('/'))||(move(1),"\\")||tab(0) ) || indent || "}"
           $endif
-      indent[1:-*SPCS] || xtag || " := " || "table(" || t || ")" || ss
+      indent[1:-*SPCS] || "/" || xtag || " := " || "table(" || t || ")" || ss
       #"\n" || xtag || " := " || "table(" || t || ")" || ss
       }
     #
@@ -319,7 +347,7 @@ procedure iimage(x,indent,done)  #: string image of value x
       gtag := "record " || t || "("
       every i := 1 to *x do {
         name(x[i]) ? (tab(find(".")),sn := tab(0))
-        ss ||:= indent || xtag || sn || " := " ||
+        ss ||:= indent || "(\\" || xtag || " | stop(FILE_LINE,name(" || xtag || "),\" is null\"))" || sn || " := " ||
             (xrslt := iimage(\x[i],indent,done), gtag ||:= pop(xrslt), ldecl ||:= pop(xrslt), pop(xrslt))
         gtag ||:= sn[2:0] || ","
         }
@@ -327,7 +355,7 @@ procedure iimage(x,indent,done)  #: string image of value x
       gtag ||:= ")\n"
       gdecl ||:= gtag
       ldecl ||:= "local " || xtag || "\n"
-      indent[1:-*SPCS] || xtag || " := " || t || "()" || ss
+      indent[1:-*SPCS] || "/" || xtag || " := " || t || "()" || ss
       }
     }
   #
@@ -341,8 +369,15 @@ procedure iimage(x,indent,done)  #: string image of value x
   #
   return if \outer
            then
+             ( if *gdecl + *ldecl + *s > 0
+                 then "$ifndef FILE_LINE\n" ||
+                      "$define FILE_LINE &file,\" line \",&line,\": \"\n" ||
+                      "$endif # FILE_LINE\n"
+                 else ""
+             ) ||
              ( if *gdecl > 0
-                 then "$ifdef IIMAGE_GLOBAL\n" || gdecl ||
+                 then "$ifdef IIMAGE_GLOBAL\n" ||
+                       gdecl ||
                       "$endif # IIMAGE_GLOBAL\n\n"
                  else ""
              ) ||
