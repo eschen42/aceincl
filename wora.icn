@@ -2,8 +2,7 @@
 #
 #   File:     wora.icn
 #
-#   Subject:  Implement "Writeable-by-One, Readable-by-All" pseudo-global
-#             variables.
+#   Subject:  "Writeable-by-One, Readable-by-All" pseudo-"global variables".
 #
 #   Author:   Arthur C. Eschenlauer
 #
@@ -19,7 +18,7 @@
 ############################################################################
 #
 #   procedure wora(id)
-#     Set a globally visibe read-only value that is resettable by creating C
+#     Set a globally visible value only resettable by the C that created it.
 #
 ############################################################################
 $ifndef _wora_
