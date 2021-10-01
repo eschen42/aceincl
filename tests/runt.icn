@@ -1,0 +1,20 @@
+link popen
+
+procedure main()
+  local foo, bar, baz, i, j
+  every baz := !(foo := open("./", "r")) do {
+    if baz ? ( bar := ="test_" || tab(find(".icn")) ) || =".icn" & pos(0)
+      then ( 
+        write(bar)
+      , baz := open( bar || ".std", "r")
+      , bar := popen( "icon " || bar || ".icn", "r")
+      , j := create !bar
+      , every i := !baz
+          do write(
+               "'", i ~== @j, "' was produced but '", i, "' was expected"
+             ) & break
+      )
+  }
+  close(\foo)
+end
+

@@ -1,0 +1,14 @@
+$include "../wora.icn"
+
+procedure main()
+  local foo, bar, baz
+  wora(main) := main
+  foo := wora(main)
+  write(image(foo))
+  foo := create wora(main)
+  write(image(@foo))
+  foo := create wora(main) := foo
+  &error := 1
+  write(image(@foo)) |
+    write("Assignment to wora(main) is only valid from &main")
+end
