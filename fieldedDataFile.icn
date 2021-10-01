@@ -106,7 +106,10 @@ end
 #   - Because there are no escapes at all, values must be contained on a
 #     single line.
 
-$define ini_line_default "default"
+$ifndef ini_line_default
+  $define ini_line_default "default"
+$endif # ini_line_default
+
 procedure iniLines(f) #: factory for C producing logical lines of an INI file
   local line, heading, logical
   heading := ini_line_default

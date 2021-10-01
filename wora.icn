@@ -1,0 +1,54 @@
+############################################################################
+#
+#   File:     wora.icn
+#
+#   Subject:  Implement "Writeable-by-One, Readable-by-All" pseudo-global
+#             variables.
+#
+#   Author:   Arthur C. Eschenlauer
+#
+#   Date:     September 30, 2021
+#
+############################################################################
+#
+#   This file is in the public domain.
+#
+#   SPDX-License-Identifier: CC-PDDC
+#     https://spdx.org/licenses/CC-PDDC.html
+#
+############################################################################
+#
+#   procedure wora(id)
+#     Set a globally visibe read-only value that is resettable by creating C
+#
+############################################################################
+$ifndef _wora_
+$define _wora_
+
+procedure wora(id) #: a globally visible value, settable by only one C
+  # WORA - Writeable-by-One, Readable-by-All
+  #   An implementation of the publisher-subscriber pattern such that a
+  #   variable is read-only outside of the C (co-expression) that originally
+  #   sets it.
+  local owner
+  static s_ownerT, s_valueT
+  initial {
+    s_ownerT := table()
+    s_valueT := table()
+  }
+  if /id then fail
+  owner := \s_ownerT[id]
+  if /owner then {
+    # WORA is settable
+    s_ownerT[id] := &current
+    suspend s_valueT[id]
+  } else if owner === &current then {
+    # WORA is resettable by owner
+    suspend s_valueT[id]
+  } else {
+    # produce an unassignable copy of WORA
+    suspend .(s_valueT[id])
+  }
+end
+
+$endif # _wora_

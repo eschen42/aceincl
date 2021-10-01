@@ -1,9 +1,8 @@
-$ifndef _selectRecordFromListByField_
 ############################################################################
 #
 #   File:     selectRecordFromListByField.icn
 #
-#   Subject:  Select records (or tables) from a list where a test
+#   Subject:  Produce records (or tables) from a list where a test
 #             co-expression produces a value when transmitted the value
 #             of the specified field for the list-members to be selected.
 #
@@ -44,7 +43,9 @@ $ifndef _selectRecordFromListByField_
 #     every pol := ("P" | "N")
 #       do {
 #         Lrslt := rslt[pol] := []
+#         # capture pol for comparison
 #         Cselect := create pol == \@&source
+#         # produce records where "polarity" field == pol
 #         every put(Lrslt,
 #             selectRecordFromListByField(demo, "polarity", Cselect)
 #           )
@@ -60,8 +61,9 @@ $ifndef _selectRecordFromListByField_
 #       }
 #    
 ############################################################################
+$ifndef _selectRecordFromListByField_
 
-procedure selectRecordFromListByField(Lfrom, sField, Ctest) #: select matching records (or tables)
+procedure selectRecordFromListByField(Lfrom, sField, Ctest) #: produce matching records (or tables)
   # Lfrom   - a list of either:
   #           - records having a field named "sField"
   #           - tables having a key named "sField"
@@ -80,8 +82,8 @@ procedure selectRecordFromListByField(Lfrom, sField, Ctest) #: select matching r
   fail
 end
 
-#$define DEMO
-$ifdef DEMO
+#$define ACEINCL_TEST
+$ifdef ACEINCL_TEST
 
 record ion(name, polarity)
 
@@ -101,7 +103,9 @@ procedure main()
   every pol := ("P" | "N")
     do {
       Lrslt := rslt[pol] := []
+      # capture pol for comparison
       Cselect := create pol == \@&source
+      # produce records where "polarity" field == pol
       every put(Lrslt,
           selectRecordFromListByField(demo, "polarity", Cselect)
         )
@@ -118,7 +122,7 @@ procedure main()
     }
 end
 
-$endif # DEMO
+$endif # ACEINCL_TEST
 
 $define _selectRecordFromListByField_
 $endif # _selectRecordFromListByField_
