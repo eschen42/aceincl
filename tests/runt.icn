@@ -1,20 +1,101 @@
-link popen
+############################################################################
+#
+#   File:     runt.icn
+#
+#   Subject:  Run all the test_*.icn for which there is a matching
+#             test_*.std
+#
+#   Author:   Arthur C. Eschenlauer
+#
+#   Date:     October 1, 2021
+#
+############################################################################
+#
+#   This file is in the public domain.
+#
+#   SPDX-License-Identifier: CC-PDDC
+#     https://spdx.org/licenses/CC-PDDC.html
+#
+############################################################################
+#   links popen
+############################################################################
 
-procedure main()
-  local foo, bar, baz, i, j
-  every baz := !(foo := open("./", "r")) do {
-    if baz ? ( bar := ="test_" || tab(find(".icn")) ) || =".icn" & pos(0)
-      then ( 
-        write(bar)
-      , baz := open( bar || ".std", "r")
-      , bar := popen( "icon " || bar || ".icn", "r")
-      , j := create !bar
-      , every i := !baz
-          do write(
-               "'", i ~== @j, "' was produced but '", i, "' was expected"
-             ) & break
-      )
-  }
-  close(\foo)
+link popen  # for procedure popen
+
+# flag that exit should produce error status even with --continue argument
+global failure
+
+# record that an error occurred
+procedure write_abort(ls[])
+  failure := 1
+  write ! ls
+  return failure
 end
 
+# run all the test_*.icn for which there is a matching test_*.std
+procedure main(args)
+  local abort       # if !args == "--continue" then write else stop
+  local dirEntry    # entry in current working directory
+  local dirListing  # names of files and subdirectores in CWD
+  local filExpected # file with expected results, test_*.std
+  local filObserved # file producing observed results, test_*.icn
+  local linCount    # line counter
+  local linExpected # expected line
+  local linObsC     # sequence of observed lines
+  local linObserved # observed line
+  local testName    # name of test, test_*
+  local traceout    # if !args == "--verbose" then write else 2
+  traceout := if !args == "--verbose" then write else 2
+  abort    := if !args == "--continue" then write_abort else stop
+  if traceout === 2
+    then write( &errout, "To trace output,  invoke as:   icon "
+              , &progname, " --verbose\n")
+  if abort === stop
+    then write( &errout, "To run all tests, invoke as:   icon "
+              , &progname, " --continue\n")
+  # For each file or subdirectory in the current directory
+  every dirEntry := !(dirListing := open("./", "r")) do {
+    # Assume it's a file if it begins with test; check tha it ends with .icn
+    if dirEntry ?
+         dirEntry == ( testName := ="test_" || tab(find(".icn")) ) || =".icn"
+      then (
+        # Write nothing unless we find a .std file
+        filExpected := open( testName || ".std", "r")
+        # Report that we will run the test
+      , write(testName)
+        # Prepare to generate the observed result lines
+      , filObserved := popen( "icon " || testName || ".icn", "r")
+        # Create a sequence of expected result lines
+      , linObsC := create traceout("observed: ",!filObserved)
+      , linCount := 0
+        # For each observed result line, abort if expected line does not match
+      , ( every linExpected := traceout("expected: ", !filExpected) do {
+            linCount +:= 1
+            # termination is premature if expected line is not observed
+            linObserved := @linObsC | (
+              abort( " ... line ", linCount
+                   , ": premature termination, expected: '", linExpected, "'"
+                   )
+            , break
+            )
+            # abort when expected line does not match observed
+            (
+              abort( " ... line ", linCount, ": '"
+                   , linExpected ~== linObserved
+                   , "' was produced but '"
+                   , linExpected
+                   , "' was expected"
+                   ) & break
+            ) | next
+          }
+        ) | if linObserved := @linObsC
+              # report unexpected output
+              then abort( " ... line ", linCount
+                        , ": unexpected output: '", linObserved, "'"
+                        )
+      )
+  }
+  close(\dirListing)
+  # exit code zero unless falure was encountered when abort === write_abort
+  exit( \failure | 0)
+end
