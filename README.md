@@ -36,6 +36,8 @@ Procedures to transform data structures into includable Icon declarations and st
 
 # selectRecordFromListByField.icn
 
+Procedure to produce records from a list of records, matching specified criteria.
+
 - procedure `selectRecordFromListByField(Lfrom, sField, Ctest)`
   - Select matching records (or tables) `X`
     - from list `Lfrom`
