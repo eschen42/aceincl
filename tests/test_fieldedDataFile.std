@@ -1,0 +1,35 @@
+T1 := table(&null)
+   T1["default"] := T2 := table(&null)
+   T1["enrichment"] := T5 := table(&null)
+      T5["column_count"] := 4
+      T5["file_comment"] := "pathway enrichment"
+      T5["file_format"] := "tabular"
+      T5["file_name"] := "dataset2.tab"
+      T5["ion_count"] := 189
+      T5["ion_name_col"] := 1
+      T5["mz_col"] := 3
+      T5["polarity_col"] := 2
+      T5["polarity_neg"] := "N"
+      T5["polarity_pos"] := "P"
+      T5["rt_col"] := 4
+      T5["rt_units"] := "seconds"
+   T1["main"] := T3 := table(&null)
+      T3["peak_number_per_fraction_max"] := 3
+      T3["peak_width"] := 10
+      T3["peak_width_units"] := "seconds"
+   T1["univariate"] := T4 := table(&null)
+      T4["column_count"] := 8
+      T4["file_comment"] := "univariate analysis"
+      T4["file_format"] := "tabular"
+      T4["file_name"] := "test_fieldedDataFile.tab"
+      T4["ion_count"] := 2
+      T4["ion_name_col"] := 1
+      T4["mz_col"] := 3
+      T4["polarity_col"] := 2
+      T4["polarity_neg"] := "neg"
+      T4["polarity_pos"] := "pos"
+      T4["rt_col"] := 6
+      T4["rt_units"] := "seconds"
+name	polarity	mz	mzMin	mzMax	rt	rtMin	rtMax
+hello	pos	400.0	399.7	400.2	120.3	120.1	120.3
+world	neg	700.0	699.7	700.2	220.3	220.1	220.3

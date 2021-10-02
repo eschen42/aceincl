@@ -1,0 +1,54 @@
+$include "../fieldedDataFile.icn"
+
+link ximage
+
+procedure main()
+  local fieldedData, f_ce, l, l1, colHeader, col, l_ce, ini
+  local f, filePath, ion_count, val
+
+  # exercise procedure getIni
+  ini := getIni("test_fieldedDataFile.ini") | stop(&progname, ": failed to open INI")
+  write(ximage(ini))
+
+  # get FieldedData(lines, fields) record with procedures returning
+  #   co-expression_count for reading logical lines and fields within a
+  #   logical line, respectively
+  fieldedData := FieldedDataFactory("tabular")
+  filePath := ini["univariate", "file_name"]
+  f := open(filePath, "r") | stop(&progname, ": failed to open file " || filePath)
+
+  # Create co-expression to produce "lines" of `f`;
+  #   this is trivial for tabular data (compared to a CSV
+  #   that can split logical lines across physical lines).
+  f_ce := fieldedData.lines(f)
+
+  # read the header line
+  l1 := @f_ce | stop(&progname, ": failed read first line of file " || filePath)
+  colHeader := table()
+  col := 0
+  # read the column names ("headers") out of the fields
+  l_ce := fieldedData.fields(l1)
+  while val := @l_ce do (
+  , col +:= 1
+  , writes(if col ~=1 then "\t" else "", val)
+  )
+  write()
+  if col ~= ini["univariate", "column_count"]
+    then stop(": tabular file header has unexpected number of column")
+  ion_count := 0
+  while l :=  @f_ce do {
+    ion_count +:= 1
+    col := 0
+    # extract values from columns
+    l_ce := fieldedData.fields(l)
+    while val := @l_ce do (
+    , col +:= 1
+    , writes(if col ~=1 then "\t" else "", val)
+    )
+    write()
+    if ini["univariate", "column_count"] ~= col
+      then stop("unexpected number of columns from tabular data file")
+  } 
+  if ini["univariate", "ion_count"] ~= ion_count
+    then stop("unexpected number of lines from tabular data file")
+end
