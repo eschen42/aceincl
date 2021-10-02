@@ -1,0 +1,126 @@
+############################################################################
+#
+#   File:     LiComboP.icn
+#
+#   Subject:  Procedures to suspend lists combining sequences.
+#
+#   Author:   Arthur C. Eschenlauer
+#
+#   Date:     September 30, 2021
+#
+############################################################################
+#
+#   This file is in the public domain.
+#
+#   SPDX-License-Identifier: CC-PDDC
+#     https://spdx.org/licenses/CC-PDDC.html
+#
+############################################################################
+#
+#   required include: wora.icn for wora(id)
+#
+############################################################################
+#
+#   procedure LiP(A)
+#     Suspend lists combining infinite sequences.
+#       LiP uses wora(LiP) to determine whether to use LiFiniteP (the
+#       default) or nAltP to combine memoized results.
+#
+#   procedure LiFiniteP(LofC)
+#     Recursively suspend lists combining finite seqs.
+#
+#   procedure nAltP(LofC)
+#     Recurrently suspend lists combining finite seqs.
+#
+############################################################################
+$ifndef _LiComboP_
+$define _LiComboP_
+
+$ifndef _wora_
+$error wora.icn must be included for definition of procedure wora(id)
+$endif
+
+procedure LiP(A) #: produce lists combining infinite sequences
+  # Generate combinations of argument results for list-invocation,
+  #   not requiring that the arguments yield finite sequences:
+  #   - For each co-expression, create an empty memoization list to hold
+  #       the results that it will produce.
+  #   - Activate each co-expression, putting the result onto its list.
+  #   - Next produce the combination of the (one-member) memoization lists.
+  #   - Next, in round-robin fashion:
+  #       - activate each co-expression;
+  #       - if activation succeeded:
+  #           - add the result to its memoization list
+  #           - and then produce the combinations of that result with the
+  #               previous results of the other co-expressions, i.e., with
+  #               all of the members of their memoization lists.
+  local done   # set to not &null when all C are exhausted
+  local i      # current C index, element of 1 to nA
+  local j      # reusable index, element of 1 to nA
+  local lcpCL  # list of C to be passed to LiFiniteP
+  local memoLL # list of memoization lists
+  local nA     # size of A
+  local saveL  # temporary holder to save memoLL[i]
+  local fingen # generates lists of combinations of finite sequences
+  nA := *A;  memoLL := []                # Initialization
+  fingen := \wora(LiP) | LiFiniteP       # Set fingen from wora(LiP)|default
+  every i := 1 to nA                     # Collect first result from each C,
+    do put( memoLL, [@A[i]] ) | fail     #   which is strictly required.
+  until \done                            # Repeat until every C is exhausted
+    do {
+      done := 1                          # Revert to &null when @C succeeds
+      every i := 1 to nA                 # For any @(!A) that succeeds,
+        do {                             #   memoize the result and suspend L
+          saveL := (                     # If @A[i] fails, advance to i + 1
+              (/saveL, memoLL[1]) |      # - first activation, special case
+              put( memoLL[i], @A[i] ) |  # - otherwise, require activation
+              next                       # - or next i
+            )[-1:0]                      # saveL slice has only last value
+          done := &null                  # C produces a value
+          saveL :=: memoLL[i]            # Save memoization list for i
+          lcpCL := []                        # Build list of C, each produ-
+          every j := 1 to nA                 #   cing the memoized values
+            do put(lcpCL, create !memoLL[j]) #   but with only latest @A[i]
+          suspend fingen(lcpCL) # Suspend combinations from memoization lists
+          memoLL[i] :=: saveL            # Revert memoization list for i
+          }                              # next i
+      }                                  # fail once every C is exhausted
+end
+
+procedure LiFiniteP(LofC) #: recursively suspend lists combining finite seqs
+  # For a list of co-expressions that produce a finite sequence
+  #   of results; produce a list of each combination of results.
+  #   This "recursive suspension" technique was adapted from
+  #   Bob Alexander's regexp.icn from the IPL.
+  # For example, LiFiniteP{1 to 2, 5 to 6} produces:
+  #   [1,5], then [1,6], then [2,5], and then [2,6].
+  local C, v
+  # For the first C to be activated more than once,
+  #   all but the first C must be finite.
+  C := ^LofC[1]
+  while v := @C
+    do if *LofC > 1
+         then suspend [v] ||| LiFiniteP(LofC[2:0])
+         else suspend [v]
+end
+
+procedure nAltP(A) #: recurrently suspend lists combining finite seqs
+  # Steve Wampler's recurrent solution, comparable in speed to
+  #   Bob Alexander's solution
+  local i          # Current co-expression to evaluate
+  local solution   # List of co-expression values
+  i := 1 ; solution := list(*A)
+  repeat {
+    while solution[i] := @A[i] do {
+        if (i +:= 1) > *A
+          then {     # Finished with this solution list
+            suspend solution
+            i -:= 1  # "backtrack"...
+          }
+        }
+    A[i] := ^A[i]              # Prepare for re-entry on l-to-r eval.
+    if (i -:= 1) = 0 then fail # "backtrack" or fail if all done
+  }
+end
+
+$endif # _LiComboP_

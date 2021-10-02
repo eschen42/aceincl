@@ -2,7 +2,7 @@
 #
 #   File:     wora.icn
 #
-#   Subject:  "Writeable-by-One, Readable-by-All" pseudo-"global variables".
+#   Subject:  Restricted-access globally accessible storage.
 #
 #   Author:   Arthur C. Eschenlauer
 #

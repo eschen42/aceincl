@@ -1,0 +1,24 @@
+$include "include_all.icn"
+
+procedure printtuple(ls[])
+  local C
+  C := create !ls
+  writes("[")
+  while writes(if *C = 0 then "" else ", ", @C)
+  write("]")
+  return
+end
+
+$define TestSequences 1 to 3, 5 to 8
+
+procedure main()
+  wora(LiP) := LiFiniteP
+  write("---\nLiP with image(wora(LiP)) = ", image(wora(LiP)))
+  every (printtuple!LiP{TestSequences})
+  wora(LiP) := nAltP
+  write("...\n---\nLiP with image(wora(LiP)) = ", image(wora(LiP)))
+  every (printtuple!LiP{TestSequences})
+  write("...\n---\nnAltP = ", image(wora(LiP)))
+  every (printtuple!nAltP{TestSequences})
+  write("...")
+end
