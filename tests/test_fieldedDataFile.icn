@@ -1,7 +1,7 @@
 $include "../fieldedDataFile.icn"
 $include "../wora.icn"
 $include "../fileDirIo.icn"
-$define prog_dir_path program_dir() || path_separator()
+$define prog_dir_path prog_path_parts() || path_separator()
 
 link ximage
 

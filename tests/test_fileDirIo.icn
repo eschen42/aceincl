@@ -1,0 +1,56 @@
+$include "../fileDirIo.icn"
+
+#$define DEBUG
+$ifdef DEBUG
+  link ximage
+$endif # DEBUG
+
+procedure main()
+  local prgL, r, expected
+  $ifdef DEBUG
+    local atmL
+    atmL := []
+  $endif # DEBUG
+  prgL := []
+  write("exercising path_atoms()")
+  write("exercising prog_path_parts()")
+  every put(prgL, prog_path_parts())
+  *prgL = 2 | stop("expected *prgL = 2 but actual *prgL = ", *prgL)
+  write("*prgL = ", *prgL)
+  $ifdef DEBUG
+    every put(atmL, path_atoms(&progname))
+    write("prog_path_parts")
+    write(ximage(prgL))
+    write("path_atoms")
+    write(ximage(atmL))
+    write(&progname)
+    write(path_constructP{path_atoms(&progname)})
+  $endif # DEBUG
+
+
+  write("exercising directory_seq()")
+  directory_seq(prgL[1]) | stop("directory_seq failed for " || prgL[1])
+  write("found directory path where program is located")
+  write("exercising pwd()")
+  directory_seq(pwd()) | stop("directory_seq failed for " || pwd())
+  write("pwd() produced a valid directory path")
+
+  write("exercising alterExtension()")
+  write("exercising path_atoms()")
+  write("exercising path_constructP()")
+  expected := prgL[2]
+  if path_constructP{path_atoms(&progname)} ?
+          r := ( =prgL[1], move(1), tab(0) )
+    then {
+      r := alterExtension(r, "[^.]*", "")
+      expected := alterExtension(expected, "[^.]*", "")
+      write( "expected program name (without path or extension): ", expected
+           , "\nobserved program name (without path or extension): ", r
+           )
+    }
+  write(
+    if r == expected then "success" else "FAILURE"
+  )
+
+  exit(0)
+end

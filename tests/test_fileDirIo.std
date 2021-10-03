@@ -1,0 +1,13 @@
+exercising path_atoms()
+exercising prog_path_parts()
+*prgL = 2
+exercising directory_seq()
+found directory path where program is located
+exercising pwd()
+pwd() produced a valid directory path
+exercising alterExtension()
+exercising path_atoms()
+exercising path_constructP()
+expected program name (without path or extension): test_fileDirIo
+observed program name (without path or extension): test_fileDirIo
+success

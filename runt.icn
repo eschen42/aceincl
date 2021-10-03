@@ -18,13 +18,32 @@
 #
 ############################################################################
 #
+#   Working examples, named `test_*.icn`, are in the `tests` directory:
+#
+#   - `test_*.std` captures the corresponding test's expected output.
+#   - `icon runt.icn tests` will run the tests and compare the results to
+#      their expected output.
+#   - usage: `icon runt.icn [--continue] [--verbose] [<zero or more dirs>]`
+#     - By default, tests are located and run in the current working
+#       directory.
+#       - Otherwise, tests are located and run in the specified directory
+#         or directories.
+#     - Tests are not run unless an `.icn` file and a `.std` file share
+#       exactly the same name.
+#     - Use the `--continue` option to run all tests regardless of whether
+#       any fail.
+#     - Use the `--verbose` option to show both the expected output from
+#       the `.std` file and the actual output produced by the test program.
+#
+############################################################################
+#
 #   links: popen
-#   includes: ../fileDirIo.icn ../wora.icn
+#   requried includes: fileDirIo.icn wora.icn
 #
 ############################################################################
 
-$include "../wora.icn"
-$include "../fileDirIo.icn"
+$include "wora.icn"
+$include "fileDirIo.icn"
 
 link popen  # for procedure popen
 
@@ -47,11 +66,7 @@ procedure main(args)
   local testName    # name of test, test_*
   local traceout    # if !args == "--verbose" then write else 2
   if !args == "--help" then {
-    $ifdef _MS_WINDOWS
-      write("usage: icon runt.icn [--continue] [--verbose]")
-    $else
-      write("usage: icon runt.icn [--continue] [--verbose] [<zero or more dirs>]")
-    $endif
+    write("usage: icon runt.icn [--continue] [--verbose] [<zero or more dirs>]")
     exit(0)
   }
   traceout := if !args == "--verbose" then write else 2
@@ -64,23 +79,23 @@ procedure main(args)
               , &progname, " --continue\n")
   # dirs either lists the directory arguments or the current directory
   dirs := []
-  $ifndef _MS_WINDOWS
-    every put( dirs, directory_seq(!args) || "/" )
-  $endif
+  every put( dirs, directory_seq(!args) || "/" )
   if *dirs == 0 then dirs := put( dirs, "./" )
   every dir := !dirs
     do {
+      chdir(dir) | (write("Could not change to directory: ", dir) & next)
       # For each file in the directory
-      every dirEntry := !(dirListing := open(dir)) do {
+      every dirEntry := !(dirListing := open(".")) do {
+        # All paths should be relative to the directory-under-test
         # Assume it's a file if it begins with test; check tha it ends with .icn
         if dirEntry ?
              dirEntry == ( testName := ="test_" || tab(find(".icn")) ) || =".icn"
           then (
             # Write nothing unless we find a .std file
-            filExpected := open( dir || testName || ".std")
+            filExpected := open( testName || ".std")
             # Report that we will run the test
           , write(testName)
-          , testName := dir || testName
+          , testName := testName
             # Prepare to generate the observed result lines
           , filObserved := popen( "icon " || testName || ".icn", "r")
             # Create a sequence of expected result lines

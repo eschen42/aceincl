@@ -18,11 +18,29 @@
 #
 ############################################################################
 #
-#   procedure alterExtension(fn, old_ex, new_ex) : s
-#     Produce fn, substituting new_ex for old_ex
+#   procedure alterExtension(fn, old_ex, new_ex) : s1, ...
+#     Produce modified fn, substituting new_ex for old_ex
 #
-#   procedure directory_seq(name)
+#   procedure directory_seq(name) : s1, ...
 #     Produce name(s) that name a directory
+#
+#   procedure prog_path_parts() : s1, s2
+#     suspend location then name of program file.
+#
+#   procedure path_atoms(path) : s1, ...
+#     suspend root, subdirectories, filename for a directory path
+#
+#   procedure path_constructP{expr} : s1, ...
+#     construct paths from sequences
+#
+#   procedure cmd_separator() : s
+#     return platform-specific command separator
+#
+#   procedure path_separator() : s
+#     return platform-specific path separator
+#
+#   procedure pwd() : s
+#     return platform-specific path to the current directory
 #
 ############################################################################
 #
@@ -32,22 +50,74 @@
 $ifndef _fileDirIo_
 $define _fileDirIo_
 
-$ifndef _wora_
-$error wora.icn must be included for definition of procedure wora(id)
-$endif # _wora_
-
 link regexp # for regular expressions to support alterExtension
 
 procedure alterExtension(fn, old_ex, new_ex) #: change extension of file name
   ReCaseIndependent()
   fn ? suspend {
            tab(ReFind("[.]" || old_ex || "$"))
-         } || "." || new_ex
+         } || (
+           if *new_ex = 0
+             then ""
+             else "." || new_ex
+         )
 end
 
 # adapted from IPL proc io.icn
 procedure directory_seq(name) #: suspend name(s) when a directory
   suspend (close(open(name || "/.")), name)
+end
+
+# inspired by IPL proc io.icn
+procedure prog_path_parts() #: suspend location then name of program file.
+  local i
+  &progname ? every i := find(path_separator())
+  if /i
+    then suspend pwd()
+    else suspend &progname[1:i]
+  if /i
+    then suspend &progname
+    else suspend &progname[i+1:0]
+end
+
+# inspired by IPL proc io.icn
+procedure path_atoms(path) #: break a directory path down to its pieces
+  local i, r, sep
+  sep := path_separator()
+  path ? while i := find(sep)
+           do {
+             r := tab(i)
+             if *r = 0
+               then suspend sep
+               else suspend r
+             move(*sep)
+           }
+  if \i
+    then suspend path[i+1:0]
+    else {
+      every r := path_atoms(pwd())
+        do suspend r
+      suspend path
+    }
+end
+
+procedure path_constructP(atoms) #: construct paths from sequences
+  local sep, r, x, atom
+  sep := path_separator()
+  # For each sequence,
+  every atom := !atoms
+    do {
+      # join the atoms from a file path, separated by path_separator()
+      r := ""
+      while x := @atom
+        do {
+          if x == sep | r == ("" | sep)
+            then r ||:= x
+            else r ||:= sep || x
+        }
+      # and suspend the result for this sequence.
+      suspend r
+    }
 end
 
 procedure cmd_separator() #: return platform-specific command separator
@@ -66,13 +136,16 @@ procedure path_separator() #: return platform-specific path separator
   $endif
 end
 
-# inspired by IPL proc io.icn
-procedure program_dir() #: return path to directory containing program
-  local i
-  &progname ? every i := find(path_separator())
-  if /i
-    then return "."
-    else return &progname[1:i]
+procedure pwd() #: return platform-specific path to the current directory
+  $ifdef _MS_WINDOWS
+    local C, x, cmd
+    cmd := "cd"
+    C := create x := open(cmd, "pr") & !x@&source | close(x) & &fail
+    while x := @C
+    return x
+  $else
+    return getenv("PWD")
+  $endif
 end
 
 $endif # _fileDirIo_
