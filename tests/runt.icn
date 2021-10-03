@@ -47,7 +47,11 @@ procedure main(args)
   local testName    # name of test, test_*
   local traceout    # if !args == "--verbose" then write else 2
   if !args == "--help" then {
-    write("usage: icon runt.icn [--continue] [--verbose] [<zero or more dirs>]")
+    $ifdef _MS_WINDOWS
+      write("usage: icon runt.icn [--continue] [--verbose]")
+    $else
+      write("usage: icon runt.icn [--continue] [--verbose] [<zero or more dirs>]")
+    $endif
     exit(0)
   }
   traceout := if !args == "--verbose" then write else 2
@@ -60,7 +64,9 @@ procedure main(args)
               , &progname, " --continue\n")
   # dirs either lists the directory arguments or the current directory
   dirs := []
-  every put( dirs, directory_seq(!args) || "/" )
+  $ifndef _MS_WINDOWS
+    every put( dirs, directory_seq(!args) || "/" )
+  $endif
   if *dirs == 0 then dirs := put( dirs, "./" )
   every dir := !dirs
     do {

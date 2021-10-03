@@ -1,4 +1,7 @@
 $include "../fieldedDataFile.icn"
+$include "../wora.icn"
+$include "../fileDirIo.icn"
+$define prog_dir_path program_dir() || path_separator()
 
 link ximage
 
@@ -7,14 +10,15 @@ procedure main()
   local f, filePath, ion_count, val
 
   # exercise procedure getIni
-  ini := getIni("test_fieldedDataFile.ini") | stop(&progname, ": failed to open INI")
+  ini := prog_dir_path || "test_fieldedDataFile.ini"
+  ini := getIni(ini) | stop(&progname, ": failed to open INI")
   write(ximage(ini))
 
   # get FieldedData(lines, fields) record with procedures returning
   #   co-expression_count for reading logical lines and fields within a
   #   logical line, respectively
   fieldedData := FieldedDataFactory("tabular")
-  filePath := ini["univariate", "file_name"]
+  filePath := prog_dir_path || ini["univariate", "file_name"]
   f := open(filePath, "r") | stop(&progname, ": failed to open file " || filePath)
 
   # Create co-expression to produce "lines" of `f`;

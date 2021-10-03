@@ -50,4 +50,29 @@ procedure directory_seq(name) #: suspend name(s) when a directory
   suspend (close(open(name || "/.")), name)
 end
 
+procedure cmd_separator() #: return platform-specific command separator
+  $ifdef _MS_WINDOWS
+    return "&"
+  $else
+    return ";"
+  $endif
+end
+
+procedure path_separator() #: return platform-specific path separator
+  $ifdef _MS_WINDOWS
+    return "\\"
+  $else
+    return "/"
+  $endif
+end
+
+# inspired by IPL proc io.icn
+procedure program_dir() #: return path to directory containing program
+  local i
+  &progname ? every i := find(path_separator())
+  if /i
+    then return "."
+    else return &progname[1:i]
+end
+
 $endif # _fileDirIo_
