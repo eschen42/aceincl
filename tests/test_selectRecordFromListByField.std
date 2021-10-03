@@ -1,0 +1,7 @@
+Polarity: P
+ion: one, polarity: P
+ion: two, polarity: P
+ion: four, polarity: P
+Polarity: N
+ion: three, polarity: N
+ion: five, polarity: N

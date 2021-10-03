@@ -1,10 +1,9 @@
-$ifndef _fieldedDataFile_
 ############################################################################
 #
 #   File:     fieldedDataFile.icn
 #
-#   Subject:  Procedures to produce logical lines or fields from 
-#             formatted data files
+#   Subject:  Procedures to produce logical lines or fields from formatted
+#             data files
 #
 #   Author:   Arthur C. Eschenlauer
 #
@@ -50,6 +49,7 @@ $ifndef _fieldedDataFile_
 #   links: regexp
 #
 ############################################################################
+$ifndef _fieldedDataFile_
 
 link regexp # for regular expressions to support alterExtension
 

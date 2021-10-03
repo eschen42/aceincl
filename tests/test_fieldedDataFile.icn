@@ -48,7 +48,7 @@ procedure main()
     write()
     if ini["univariate", "column_count"] ~= col
       then stop("unexpected number of columns from tabular data file")
-  } 
+  }
   if ini["univariate", "ion_count"] ~= ion_count
     then stop("unexpected number of lines from tabular data file")
 end
