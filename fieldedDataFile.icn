@@ -41,17 +41,9 @@
 #   procedure getIni(ini) : T (string -> T (string -> x))
 #     Produce  a table of tables from an INI file
 #
-#   procedure alterExtension(fn, old_ex, new_ex) : s
-#     Produce fn, substituting new_ex for old_ex
-#
-############################################################################
-#
-#   links: regexp
-#
 ############################################################################
 $ifndef _fieldedDataFile_
-
-link regexp # for regular expressions to support alterExtension
+$define _fieldedDataFile_
 
 # FieldedData organizes functions that create co-expressions producing
 #   logical lines and fields within a logical line from tabular data
@@ -205,12 +197,4 @@ $endif
   return tbl_ini
 end
 
-procedure alterExtension(fn, old_ex, new_ex) #: change extension of file name
-  ReCaseIndependent()
-  fn ? return {
-           tab(ReFind("[.]" || old_ex || "$"))
-         } || "." || new_ex
-end
-
-$define _fieldedDataFile_
 $endif # _fieldedDataFile_

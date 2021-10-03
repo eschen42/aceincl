@@ -36,7 +36,17 @@ Procedures to produce logical lines or fields from formatted data files.
     - `old_ex` is the extension portion of `fn`.
     - `new_ex` is the new extension to replace `old_ex`
 
-# iimage.icn
+## fieldedDataFile.icn
+
+Procedures to manipulate files, directores, and their paths.
+
+#### procedure alterExtension(fn, old_ex, new_ex) : s
+  - Produce fn, substituting new_ex for old_ex
+
+#### procedure directory_seq(name)
+  - Produce name(s) that name a directory
+
+## iimage.icn
 
 Procedures to transform data structures into includable Icon declarations and statements
 
@@ -45,7 +55,7 @@ Procedures to transform data structures into includable Icon declarations and st
 #### procedure `idump(f, x[])`
   - Write Icon code to reproduce values in list `x`
 
-# selectRecordFromListByField.icn
+## selectRecordFromListByField.icn
 
 Procedure to produce records from a list of records, matching specified criteria.
 
@@ -54,7 +64,7 @@ Procedure to produce records from a list of records, matching specified criteria
     - from list `Lfrom`
     - where `X[sField] @ Ctest` succeeds
 
-# wora.icn
+## wora.icn
 
 Procedure to produce a value that can be read globally but can be reset only by the co-expression that set it it initially.
 
@@ -62,7 +72,7 @@ Procedure to produce a value that can be read globally but can be reset only by 
   - Set a globally visibe read-only value
     - which is resettable by the C that creates it.
 
-# LiComboP.icn
+## LiComboP.icn
 
 Procedures to suspend lists combining sequences.
 

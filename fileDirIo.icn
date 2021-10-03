@@ -1,0 +1,53 @@
+
+############################################################################
+#
+#   File:     fileDirIo.icn
+#
+#   Subject:  Procedures to manipulate files, directores, and their paths.
+#
+#   Author:   Arthur C. Eschenlauer
+#
+#   Date:     September 8, 2021
+#
+############################################################################
+#
+#   This file is in the public domain.
+#
+#   SPDX-License-Identifier: CC-PDDC
+#     https://spdx.org/licenses/CC-PDDC.html
+#
+############################################################################
+#
+#   procedure alterExtension(fn, old_ex, new_ex) : s
+#     Produce fn, substituting new_ex for old_ex
+#
+#   procedure directory_seq(name)
+#     Produce name(s) that name a directory
+#
+############################################################################
+#
+#   links: regexp
+#
+############################################################################
+$ifndef _fileDirIo_
+$define _fileDirIo_
+
+$ifndef _wora_
+$error wora.icn must be included for definition of procedure wora(id)
+$endif # _wora_
+
+link regexp # for regular expressions to support alterExtension
+
+procedure alterExtension(fn, old_ex, new_ex) #: change extension of file name
+  ReCaseIndependent()
+  fn ? suspend {
+           tab(ReFind("[.]" || old_ex || "$"))
+         } || "." || new_ex
+end
+
+# adapted from IPL proc io.icn
+procedure directory_seq(name) #: suspend name(s) when a directory
+  suspend (close(open(name || "/.")), name)
+end
+
+$endif # _fileDirIo_

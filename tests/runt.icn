@@ -17,8 +17,14 @@
 #     https://spdx.org/licenses/CC-PDDC.html
 #
 ############################################################################
-#   links popen
+#
+#   links: popen
+#   includes: ../fileDirIo.icn ../wora.icn
+#
 ############################################################################
+
+$include "../wora.icn"
+$include "../fileDirIo.icn"
 
 link popen  # for procedure popen
 
@@ -112,9 +118,4 @@ procedure write_abort(ls[])
   failure := 1
   write ! ls
   return failure
-end
-
-# adapted from IPL proc io.icn
-procedure directory_seq(name) #: suspend name when a directory
-  suspend (close(open(name || "/.")), name)
 end

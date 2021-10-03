@@ -1,7 +1,0 @@
-# Here are file inclusions for all aceincl/test/test_*.icn
-#   This is an alternative to specifying LPATH.
-#   It might be nice to have a way to dereference environment
-#     variables from the preprocessor; the intrepid may wish
-#     to adapt progs/ipp.icn from the IPL.
-$include "../wora.icn"
-$include "../LiComboP.icn"

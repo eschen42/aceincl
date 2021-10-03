@@ -62,6 +62,7 @@
 #
 ############################################################################
 $ifndef _selectRecordFromListByField_
+$define _selectRecordFromListByField_
 
 procedure selectRecordFromListByField(Lfrom, sField, Ctest) #: produce matching records (or tables)
   # Lfrom   - a list of either:
@@ -82,5 +83,4 @@ procedure selectRecordFromListByField(Lfrom, sField, Ctest) #: produce matching 
   fail
 end
 
-$define _selectRecordFromListByField_
 $endif # _selectRecordFromListByField_
