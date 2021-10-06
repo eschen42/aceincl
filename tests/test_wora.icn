@@ -11,4 +11,10 @@ procedure main()
   &error := 1
   write(image(@foo)) |
     write("Assignment to wora(main) is only valid from &main")
+  if /wora(main)
+    then stop("wora(main) was unexpectedly null")
+  wora(main) := wora(main)
+  if \wora(main, 1)
+    then stop("wora(main) was not reset")
+  exit(0)
 end

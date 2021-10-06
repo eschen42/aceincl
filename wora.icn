@@ -17,14 +17,16 @@
 #
 ############################################################################
 #
-#   procedure wora(id)
+#   procedure wora(id,del)
 #     Set a globally visible value only resettable by the C that created it.
+#     `id` - identifies the WORA.
+#     `del` - not null when owner requests deletion; ignored otherwise.
 #
 ############################################################################
 $ifndef _wora_
 $define _wora_
 
-procedure wora(id) #: a globally visible value, settable by only one C
+procedure wora(id,del) #: a globally visible value, settable by only one C
   # WORA - Writeable-by-One, Readable-by-All
   #   An implementation of the publisher-subscriber pattern such that a
   #   variable is read-only outside of the C (co-expression) that originally
@@ -43,6 +45,12 @@ procedure wora(id) #: a globally visible value, settable by only one C
     suspend s_valueT[id]
   } else if owner === &current then {
     # WORA is resettable by owner
+    if \del
+      then return (
+             delete(s_ownerT,id)
+           , delete(s_valueT,id)
+           , &null
+           )
     suspend s_valueT[id]
   } else {
     # produce an unassignable copy of WORA

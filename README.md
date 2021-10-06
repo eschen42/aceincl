@@ -100,9 +100,12 @@ Procedure to produce records from a list of records (or a list of tables), match
 
 Procedure to produce a value that can be read globally but can be reset only by the co-expression that set it it initially.
 
-#### procedure `wora(id)` : x (lvalue or rvalue)
-  - Set a globally visibe read-only value
+#### procedure `wora(id,del)` : x (lvalue or rvalue)
+  - Set or read a globally visible read-only value,
     - which is resettable by the C that creates it.
+  - `id` identifies the value; it is a key to a static table.
+  - `del` signifies that the value is to be deleted, but only when specified by the creator.
+    - Otherwise, this argument is ignored.
 
 ## LiComboP.icn
 

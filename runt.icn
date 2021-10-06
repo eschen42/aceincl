@@ -73,10 +73,10 @@ procedure main(args)
   abort    := if !args == "--continue" then write_abort else stop
   if traceout === 2
     then write( &errout, "To trace output,  invoke as:   icon "
-              , &progname, " --verbose\n")
+              , &progname, " --verbose")
   if abort === stop
     then write( &errout, "To run all tests, invoke as:   icon "
-              , &progname, " --continue\n")
+              , &progname, " --continue")
   # dirs either lists the directory arguments or the current directory
   dirs := []
   every put( dirs, directory_seq(!args) || "/" )
@@ -94,7 +94,7 @@ procedure main(args)
             # Write nothing unless we find a .std file
             filExpected := open( testName || ".std")
             # Report that we will run the test
-          , write(testName)
+          , write("\n", testName)
           , testName := testName
             # Prepare to generate the observed result lines
           , filObserved := popen( "icon " || testName || ".icn", "r")
