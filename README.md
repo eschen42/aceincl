@@ -125,3 +125,58 @@ Procedures to suspend lists combining sequences.
 #### procedure `nAltP(LofC)` : L1, ...
   - Recurrently suspend lists combining finite seqs;
     - does not enforce "breadth first" evaluation.
+
+<hr />
+
+## Git Submodule - some practical reminders
+
+Reference: [http://openmetric.org/til/programming/git-pull-with-submodule/](http://openmetric.org/til/programming/git-pull-with-submodule/)
+
+- To add a submodule to a repo, do, e.g.:<br />
+  `  git submodule add git@github.com:eschen42/aceincl.git`
+- For a repo with submodules, pull all submodules using<br />
+	`  git submodule update --init --recursive` <br />
+  for the first time. All submodules will be pulled down locally.
+- To update submodules, use<br />
+	`  git submodule update --recursive --remote`<br />
+- To "commit" new changes in a submodule to the client project:
+	1. *Make **sure** that there are no unsaved changes in the submodule* (are any files in the sandbox different from the committed code?).
+		a. If so, commit and push.
+	2. Next:<br />
+     `  git submodule update --recursive --remote`
+	3. Now it's possible to add and commit changes to the client project.
+- What's changed in the submodule? (or "Has the commit for the submodule changed?" or something):<br />
+	`  git diff --submodule`
+
+### Ichabod Crane and the HEAD-less Repository
+
+Reference: [https://www.loekvandenouweland.com/content/head-detached-from-origin-master.html](https://web.archive.org/web/20181001042322if_/https://www.loekvandenouweland.com/content/head-detached-from-origin-master.html)
+
+If a submodule is in a "detatched HEAD" state (and it is not 1789), there are two courses of action that to take, depending on whether commits require rescuing.
+
+If there is no need to push commits to the submodule to a remote git repository, something like the following should work, e.g., to reattach origin/main from the remote for submodule aceincl:
+```
+cd aceincl
+git branch -la
+git checkout remotes/origin/main
+git status
+git pull
+git status
+```
+
+If there are commits to preserve, the process is more involved; see the reference, the gist of which is something like:
+
+1. Put the commits onto a branch:<br />
+   `  git branch fix-detached-HEAD $(git log | sed -n -e '/^commit/{s/commit[ ]*//; p; q}; d')`
+2. Get the `main` or `master` branch, as appropriate for your repo:<br />
+   `  git checkout main` (or `git checkout master`)
+3. Re-establish remote tracking:<br />
+   `  git fetch`
+4. Review changes if necessary:<br />
+   `  git diff fix-detached-HEAD`
+5. Merge the changes to the remote-tracking non-HEAD-less branch:<br />
+   `  git merge fix-detached-HEAD`
+6. Push changes to the remote:<br />
+   `  git push --set-upstream origin master`<br />
+   or
+   `  git push --set-upstream origin main`
