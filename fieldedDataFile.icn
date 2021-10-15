@@ -22,14 +22,26 @@
 #     A record that holds two co-expression factories
 #
 #   procedure FieldedDataFactory(format, filePath) :  FieldedData
-#     Returns FieldedData for file at filePath according to specified format
+#     Returns FieldedData for file at filePath according to format;
+#     formula == ( "tabular" | "ini" | stop() )
 #
 #   procedure tabularLines(f) : C
 #     Procduce co-expression that produces logical lines of a tabular file
+#     - f: test file opened for reading
 #
 #   procedure tabularFields(line, sep) : C
 #     Procduce co-expression that produces fields from a logical line of a
 #     tabular file
+#     - line: logical line, s
+#     - sep : (optional) separator, c; defaults to '\t'
+#
+#   procedure getTabular(typeName, tsvPath, colL, sep, dflt)
+#     Produce L of RecTable from a tabular file
+#     - typeName: the first result to be produced by RecTableType(T), s
+#     - tsvPath : the path to the tabular data file, s
+#     - colL    : (optional) columns to select, L of i
+#     - sep     : (optional) separators, c
+#     - dflt    : (optional) default value for RecTable fields, x
 #
 #   procedure iniLines(f) : C
 #     Procduce co-expression that produces logical lines of an INI file
@@ -39,11 +51,16 @@
 #     of an INI file
 #
 #   procedure getIni(ini) : T (string -> T (string -> x))
-#     Produce  a table of tables from an INI file
+#     Produce a table of table from an INI file
 #
 ############################################################################
 $ifndef _fieldedDataFile_
 $define _fieldedDataFile_
+
+$ifndef _RecTable_
+$error Must include RecTable.icn for procedure RecTableConstructorC
+$endif
+
 
 # FieldedData organizes functions that create co-expressions producing
 #   logical lines and fields within a logical line from tabular data
@@ -52,6 +69,8 @@ record FieldedData(lines, fields) #: record holding two co-expression factories
 # FieldedDataFactory produces FieldedData populated according to format;
 #   as of now, only "tabular" format is supported
 procedure FieldedDataFactory(format, filePath) #: produce FieldedData for format
+  close(open(filePath, "r")) |
+    stop("FieldedDataFactory: Cannot open file for reading: " || filePath)
   return case format of {
     # eventually add support for CSV and who knows what else
     "tabular" : FieldedData(tabularLines, tabularFields)
@@ -74,18 +93,76 @@ end
 # create co-expression that, for each activation, transmits to &source a
 #   field from a logical line of a tab-separated-values file
 procedure tabularFields(line, sep) #: factory for C producing fields from a logical line of a tabular file
-  local field
+  local field, source
   /sep := '\t'
   return create {
+      source := &source
       line ? while ( not pos(0)
-                   , field := tab(upto('\t') | 0)
-                   , field @ &source
+                   , field := tab(upto(sep) | 0)
+                   , field @ source
                    , move(1)
                    )
-      if line[-1:0] == '\t'
-        then "" @ &source
+      if line[-1:0] == sep
+        then "" @ source
       &fail
     }
+end
+
+procedure getTabular(typeName, tsvPath, colL, sep, dflt) #: Produce L of RecTable from a tabular file
+  # - typeName: the first result to be produced by RecTableType(T), s
+  # - tsvPath : the path to the tabular data file, s
+  # - colL    : (optional) columns to use, L of i; default: use all columns
+  # - sep     : (optional) separators, c; default: '\t'
+  # - dflt    : (optional) default value for RecTable fields, x
+  local fieldedData # a FieldedData record having two C members: lines, fields
+  local resultL     # result, L of RecTable
+  local lineC       # C producing logical lines of the tabular file
+  local lineL       # one result produced by lineC
+  local lineFieldL  # list of fields in lineL
+  local fieldC      # C producing logial fields of lineL
+  local RecTableC   # L @ RecTableC produces RecTable
+
+  local allocated
+  local collections
+  local regions
+  local storage
+  local i, gimme
+
+  /sep := '\t'
+
+  RecTableColTypeCheck(typeName, "string", "typeName")
+  RecTableColTypeCheck(tsvPath, "string", "tsvPath")
+
+  write("getTabular parsing ", tsvPath)
+  fieldedData := FieldedDataFactory("tabular", tsvPath)
+  lineC := fieldedData.lines(open(tsvPath,"r"), sep) |
+    stop(&progname, ": failed to open tabular file ",tsvPath)
+  resultL := []
+  # Using first line, create C that will produce RecTable instances
+  lineL := @lineC
+  lineFieldL := []
+  fieldC := fieldedData.fields(lineL)
+  while put(lineFieldL, @fieldC)
+  RecTableC :=
+    RecTableConstructorC(
+      typeName
+    , lineFieldL
+    , colL
+    , dflt
+    )
+  # Using subsequent lines and RecTableC, produce RecTable instances
+  while lineL := @lineC
+    do {
+      lineFieldL := []
+      lineL ? every fieldC := upto(sep) | 0
+            do {
+              put(lineFieldL, tab(fieldC))
+              pos(0) | move(1)
+              }
+      put(resultL, lineFieldL @ RecTableC)
+    }
+  if *resultL > 0
+    then return resultL
 end
 
 # create co-expression that, for each activation, transmits to &source a
@@ -156,7 +233,7 @@ $ifndef tbl_ini_default
   $define tbl_ini_default "default"
 $endif
 
-procedure getIni(ini) #: parse an INI file into a table of tables
+procedure getIni(ini) #: parse an INI file into a table of table
   # ini             # the path to the INI named after the &progname
   local f           # the file returned by open(ini)
   local l           # a line from f

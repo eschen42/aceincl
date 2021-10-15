@@ -1,0 +1,190 @@
+############################################################################
+#
+#   File:     RecTable.icn
+#
+#   Subject:  Procedures to produce/manipulate record-like tables
+#
+#   Author:   Arthur C. Eschenlauer
+#
+#   Date:     October 13, 2021
+#
+############################################################################
+#
+#   This file is in the public domain.
+#
+#   SPDX-License-Identifier: CC-PDDC
+#     https://spdx.org/licenses/CC-PDDC.html
+#
+############################################################################
+#
+#   procedure RecTableConstructorC(rec_name_s, rec_fields_L, rec_default_x) : C
+#     Produce a C that, when receiving a transmitted list of values (of the
+#     same length as rec_fields_L), produces a RecTable instance:
+#     - rec_name_s:    the "type" of the RecTable
+#     - rec_fields_L:  a list of the field names
+#     - rec_col_iL:    an optional list of column numbers to choose,
+#                      defaults to all
+#     - rec_default_x: default value for table members
+#
+#   procedure RecTable(rec_name_s, rec_fields_L, rec_data_L, rec_default_x) : T
+#     Produce a table with record-like aspects:
+#     - rec_name_s:    the "type" of the RecTable
+#     - rec_fields_L:  a list of the field names
+#     - rec_data_L:    an optional list of values to assign to the fields
+#     - rec_col_iL:    an optional list of column numbers to choose
+#                      defaults to all
+#     - rec_default_x: default value for table members
+#
+#   procedure RecTableType(x) : s1, S2, s3, ...
+#     For RecTable, produce name, set of fields, and fields;
+#     for non-RecTable, return type(x).
+#
+#   procedure RecTableFields(x) : s1, ...
+#     Produce RecTable's fields, or (likely) default value for non-RecTable:
+#     - The default value will be produced for non-RecTable except when the
+#       key that is the table itself has been assigned another value.
+#
+#   procedure RecTableColTypeCheck(x, type_name, col_name, preamble) : x
+#     Return x, except abort when x is not instance of type_name
+#     - x        : value whose type is to be checked
+#     - type_name: expected string for RecTableType(x)
+#     - col_name : name of identifier-under-test
+#     - preamble : initial string for error message; defaults value of name
+#                  RecTablePreamble.
+#
+############################################################################
+$ifndef _RecTable_
+$define _RecTable_
+
+$ifndef RecTablePreamble
+$define RecTablePreamble "\n  File " || &file || "; Line " || &line || ":\n  Bad Argument ==> "
+$endif # RecTablePreamble
+
+procedure RecTableConstructorC(rec_name_s, rec_fields_L, rec_col_iL, rec_default_x) #: C producing RecTable instances
+  # Produce a C that, when receiving a transmitted list of values (of the
+  # same length as rec_fields_L), produces a RecTable instance:
+  # - rec_name_s:    the "type" of the RecTable
+  # - rec_fields_L:  a list of the field names
+  # - rec_col_iL:    an optional list of column numbers to choose, defaults to all
+  # - rec_default_x: default value for table members
+  local fields_L, T, C
+  RecTableColTypeCheck(rec_name_s, "string", "rec_name_s")
+  RecTableColTypeCheck(rec_fields_L, "list", "rec_fields_L")
+  fields_L := copy(rec_fields_L)
+  C := create
+         repeat T := RecTable( rec_name_s
+                             , fields_L
+                             , T @ &source
+                             , rec_col_iL
+                             , rec_default_x
+                             )
+  @C
+  return C
+end
+
+procedure RecTable( rec_name_s, rec_fields_L, rec_data_L, rec_col_iL, rec_default_x ) #: produce a table with record-like properties
+  # - rec_name_s:    the "type" of the RecTable
+  # - rec_fields_L:  a list of the field names
+  # - rec_data_L:    an optional list of values to assign to the fields
+  # - rec_col_iL:    an optional list of column numbers to choose, defaults to all
+  # - rec_default_x: default value for table members
+  local T, flds, data, i, x, rec_col_S
+  T := table(rec_default_x)
+  RecTableColTypeCheck(rec_name_s, "string", "rec_name_s")
+  RecTableColTypeCheck(rec_fields_L, "list", "rec_fields_L")
+  if /rec_col_iL
+    then {
+      rec_col_S := set()
+      every i := 1 to *rec_fields_L
+        do insert(rec_col_S, i)
+    } else {
+      RecTableColTypeCheck(rec_col_iL, "list", "rec_col_iL")
+      rec_col_S := set(rec_col_iL)  # assume these to be integers
+    }
+  if \rec_data_L
+    then {
+      RecTableColTypeCheck(rec_data_L, "list", "rec_data_L")
+      every i := 1 to *rec_fields_L
+        do {
+          if member(rec_col_S, i)
+            then T[rec_fields_L[i]] := rec_data_L[i]
+            else { rec_fields_L[i];    rec_data_L[i] }
+        }
+    }
+  T[T] := [rec_name_s, set(rec_fields_L)]
+  every i := 1 to *rec_fields_L
+    do {
+      if member(rec_col_S, i)
+        then put(T[T], rec_fields_L[i])
+    }
+  return T
+end
+
+procedure RecTableType(x) #: For RecTable, produce name and fields.
+  # For RecTable, produce name, set of fields, and fields;
+  # for non-RecTable, return type(x).
+  if type(x) ~== "table"
+    then return type(x)
+  if /x[x]
+    then return "table"
+  suspend !(\x[x])
+end
+
+procedure RecTableFields(x) #: Produce RecTable's fields, or (likely) default value for non-RecTable:
+  # - The default value will be produced for non-RecTable except when the
+  #   key that is the table itself has been assigned another value.
+  local fldC
+  if type(x) ~== "table"
+    then fail
+  if /x[x]
+    then {
+      fldC := create !(\x[x])
+      @fldC
+      @fldC
+      while suspend @fldC
+    }
+end
+
+procedure RecTableColTypeCheck(x, type_name, col_name, preamble) #: abort on type mismatch
+  # RecTableColTypeCheck: Abort when x is not instance of type_name
+  # - x        : value whose type is to be checked
+  # - type_name: expected string for RecTableType(x)
+  # - col_name : name of identifier-under-test
+  # - preamble : initial string for error message; defaults value of name
+  #              RecTablePreamble.
+  local errno
+  /preamble := RecTablePreamble
+  errno := case \type_name of {
+    "integer"          : 101
+    "real" | "numeric" : 102
+    "string"           : 103
+    "cset"             : 104
+    "file"             : 105
+    "procedure"        : 106
+    "record"           : 107
+    "list"             : 108
+    "co-expression"    : 118
+    "set"              : 119
+    "table"            : 124
+    default            : 123
+  } | ( write(&errout, "RecTableColTypeCheck: type_name cannot be null")
+      , type_name := "(error: type_name unspecified)"
+      , 123
+      )
+  # runerr (i,x) -- terminate with run-time error
+  #   Terminates program execution with error i and offending value x
+  return ( RecTableType(x) ~== type_name
+         #, &dump := -1
+         , &trace := -1
+         , write( &errout
+                , preamble
+                , "Argument ("
+                , col_name
+                , ") must be a "
+                , type_name
+                )
+         , runerr(errno, x)
+         ) | x
+end
+
+$endif # _RecTable_

@@ -28,54 +28,89 @@ Working examples, named `test_*.icn`, are in the `tests` directory:
 Procedures to produce logical lines or fields from formatted data files.
 
 #### record `FieldedData(lines, fields)`
-  - Record holding two co-expression factories
-    - `lines` === tabularLines | iniLines
-    - `fields` === tabularFields | iniFields
+
+Produce record holding two co-expression factories:
+
+- `lines` === tabularLines | iniLines
+- `fields` === tabularFields | iniFields
+
 #### procedure `FieldedDataFactory(format, filePath)` : FieldedData
-  - Produce a `FieldedData` record for `filePath` corresponding to format.
-  - `format == ("tabular" | "ini")`
+
+Produce a `FieldedData` record for `filePath` corresponding to format.
+
+- `format == ("tabular" | "ini")`
+
 #### procedure `tabularLines(f)` : C
-  - Factory for a co-expression producing logical lines of a tabular file `f`.
+
+Factory for a co-expression producing logical lines of a tabular file `f`.
+
 #### procedure `tabularFields(line, sep)` : C
-  - Factory for a co-expression producing fields from a logical line of a tabular file:
-    - `line` is a logical line produced by `tabularLines`.
-    - `sep` is the field separator; if omitted or &null, TAB is used.
+
+Factory for a co-expression producing fields from a logical line of a tabular file:
+- `line` is a logical line produced by `tabularLines`.
+- `sep` is the field separator; if omitted or &null, TAB is used.
+
+#### procedure `getTabular(typeName, tsvPath, colL, sep, dflt)` : L
+
+Produce L of RecTable from a tabular file
+
+- `typeName`: the first result to be produced by RecTableType(T), s
+- `tsvPath` : the path to the tabular data file, s
+- `colL`    : (optional) columns to select, L of i
+- `sep`     : (optional) separators, c
+- `dflt`    : (optional) default value for RecTable fields, x
+
 #### procedure `iniLines(f)` : C
-  - Factory for a co-expression producing logical lines of an INI file `f`.
+
+Factory for a co-expression producing logical lines of an INI file `f`.
+
 #### procedure `iniFields(line)` : C
-  - Factory for a co-expression producing fields from a logical line of an INI file
-    - `line` is a logical line produced by `iniLines`.
+
+Factory for a co-expression producing fields from a logical line of an INI file
+
+- `line` is a logical line produced by `iniLines`.
+
 #### procedure `getIni(ini)` : T (two dimensional)
-  - Parse an INI file at path `ini` into a table of tables
+
+Parse an INI file at path `ini` into a table of tables
 
 ## fileDirIo.icn
 
 Procedures to manipulate files, directores, and their paths.
 
 #### procedure `alterExtension(fn, old_ex, new_ex)` : s1, ...
-  - Produce modified `fn`, substituting `new_ex` for `old_ex`
-    - If `new_ex` is "", the trailing period will be removed.
+
+Produce modified `fn`, substituting `new_ex` for `old_ex`
+
+- If `new_ex` is "", the trailing period will be removed.
 
 #### procedure `directory_seq(name)` : s1, ...
-  - Produce name(s) that name a directory
+
+Produce name(s) that name a directory
 
 #### procedure `prog_path_parts()` : s1, s2
-  - suspend location then name of program file.
+
+Suspend location then name of program file.
 
 #### procedure `path_atoms(path)` : s1, ...
-  - suspend root, subdirectories, filename for a directory path
+
+Suspend root, subdirectories, filename for a directory path
 
 #### procedure `path_constructP{expr}` : s1, ...
-  - construct paths from sequences
+
+Construct paths from sequences
 
 #### procedure `cmd_separator()` : s
-  - return platform-specific command separator
+
+Return platform-specific command separator
 
 #### procedure `path_separator()` : s
-  - return platform-specific path separator
+
+Return platform-specific path separator
 
 #### procedure `pwd()` : s
-  - return platform-specific path to the current directory
+
+Return platform-specific path to the current directory
 
 ## iimage.icn
 
@@ -125,6 +160,60 @@ Procedures to suspend lists combining sequences.
 #### procedure `nAltP(LofC)` : L1, ...
   - Recurrently suspend lists combining finite seqs;
     - does not enforce "breadth first" evaluation.
+
+## RecTable.icn
+
+Procedures to produce/manipulate record-like tables.
+
+### procedure `RecTableConstructorC(rec_name_s, rec_fields_L, rec_default_x)` : C
+
+Produce a C that, when receiving a transmitted list of values (of the
+same length as `rec_fields_L`), produces a RecTable instance:
+
+- `rec_name_s`    the "type" of the RecTable
+- `rec_fields_L`  a list of the field names
+- `rec_col_iL`    an optional list of column numbers to choose,
+                  defaults to all
+- `rec_default_x` default value for table members
+
+### procedure `RecTable(rec_name_s, rec_fields_L, rec_data_L, rec_default_x)` : T
+
+Produce a table with record-like aspects:
+
+- `rec_name_s`:    the "type" of the RecTable
+- `rec_fields_L`:  a list of the field names
+- `rec_data_L`:    an optional list of values to assign to the fields
+- `rec_col_iL`:    an optional list of column numbers to choose
+                 defaults to all
+- `rec_default_x`: default value for table members
+
+### procedure `RecTableType(x)` : s1, S2, s3, ...
+
+For RecTable, produce:
+
+- name
+- set of all fields
+- each field
+
+For non-RecTable, return type(x).
+
+### procedure `RecTableFields(x)` : s1, ...
+
+Produce RecTable's fields, or (likely) default value for non-RecTable:
+
+- The default value will be produced for non-RecTable except when the
+  key that is the table itself has been assigned another value.
+
+### procedure `RecTableColTypeCheck(x, type_name, col_name, preamble)` : x
+
+Return x, except abort when x is not instance of type_name:
+
+- `x`        : value whose type is to be checked
+- `type_name`: expected string for RecTableType(x)
+- `col_name` : name of identifier-under-test
+- `preamble` : initial string for error message; defaults value of name
+             RecTablePreamble.
+
 
 <hr />
 
