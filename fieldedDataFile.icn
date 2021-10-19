@@ -126,12 +126,12 @@ procedure getTabular(typeName, tsvPath, colL, sep, dflt) #: Produce L of RecTabl
   local collections
   local regions
   local storage
-  local i, gimme
+  local i, gimme, f
 
   /sep := '\t'
 
   RecTableColTypeCheck(typeName, "string", "typeName")
-  RecTableColTypeCheck(tsvPath, "string", "tsvPath")
+  RecTableColTypeCheck(tsvPath,  "string", "tsvPath" )
 
   write("getTabular parsing ", tsvPath)
   fieldedData := FieldedDataFactory("tabular", tsvPath)
@@ -150,8 +150,22 @@ procedure getTabular(typeName, tsvPath, colL, sep, dflt) #: Produce L of RecTabl
     , colL
     , dflt
     )
+  # defining NOHACK increases:
+  # - sys  time roughly 50%
+  # - real time roughly 60%
+  # - user time roughly 25%
+  #$define NOHACK
+  $ ifndef NOHACK
+  f := open(tsvPath,"r") |
+    stop(&progname, ": failed to open tabular file ",tsvPath)
+  $endif # NOHACK
   # Using subsequent lines and RecTableC, produce RecTable instances
+  $ ifdef NOHACK
   while lineL := @lineC
+  $else # NOHACK not defined
+  read(f)
+  while lineL := read(f)
+  $endif # NOHACK
     do {
       lineFieldL := []
       lineL ? every fieldC := upto(sep) | 0
