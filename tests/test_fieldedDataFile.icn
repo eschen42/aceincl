@@ -1,3 +1,4 @@
+$include "../RecTable.icn"
 $include "../fieldedDataFile.icn"
 $include "../wora.icn"
 $include "../fileDirIo.icn"
@@ -17,8 +18,8 @@ procedure main()
   # get FieldedData(lines, fields) record with procedures returning
   #   co-expression_count for reading logical lines and fields within a
   #   logical line, respectively
-  fieldedData := FieldedDataFactory("tabular")
   filePath := prog_dir_path || ini["univariate", "file_name"]
+  fieldedData := FieldedDataFactory("tabular", filePath)
   f := open(filePath, "r") | stop(&progname, ": failed to open file " || filePath)
 
   # Create co-expression to produce "lines" of `f`;
