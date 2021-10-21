@@ -4,7 +4,8 @@ record ion(name, polarity)
 
 procedure main()
 
-  local demo, rslt, pol, Lrslt, Cselect, R
+  local demo, rslt, pol, Lrslt, Cselect, R, x, S
+  S := set(["one", "two", "three", "five"])
   # record ion(name, polarity)
   demo := [
     ion("one", "P")
@@ -13,16 +14,41 @@ procedure main()
   , ion("four", "P")
   , ion("five", "N")
   ]
+  write("testing selectRecordFromListByField:\n")
   # partition the ions by polarity
   rslt := table()
   every pol := ("P" | "N")
     do {
       Lrslt := rslt[pol] := []
       # capture pol for comparison
-      Cselect := create pol == \@&source
+      Cselect := create pol == @&source
       # produce records where "polarity" field == pol
       every put(Lrslt,
           selectRecordFromListByField(demo, "polarity", Cselect)
+        )
+    }
+  # at this point:
+  # - rslt("P") has ions one, two, and four
+  # - rslt("N") has ions three and five
+
+  every pol := ("P" | "N")
+    do {
+      write("Polarity: ", pol)
+      every R := !rslt[pol]
+        do write("ion: ", R.name, ", polarity: ", R.polarity)
+    }
+
+  write("\ntesting selectRecordFromListByFieldsL:\n")
+  # partition the ions by polarity, constrain by name
+  rslt := table()
+  every pol := ("P" | "N")
+    do {
+      Lrslt := rslt[pol] := []
+      # capture pol for comparison
+      Cselect := create (x := @&source, pol == x[2], member(S, x[1]))
+      # produce records where "polarity" field == pol
+      every put(Lrslt,
+          selectRecordFromListByFieldsL(demo, ["name", "polarity"], Cselect)
         )
     }
   # at this point:

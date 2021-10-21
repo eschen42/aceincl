@@ -19,14 +19,29 @@
 #
 ############################################################################
 #
-#   selectRecordFromListByField(Lfrom, sField, Ctest) : X1, X2, ...
+#   selectRecordFromListByField(Lfrom, sField, Ctest) : X1, ...
 #   - Generate elements of Lfrom where contents of sField match criteria
 #     evaluated by Ctest, i.e., Ctest produces a value when contents are
 #     transmitted to it.
 #   - Lfrom is a list of records (or tables) having a field (or key) match-
 #     ing sField
-#   - `Lfrom[sFeld] @ Ctest` succeeds when a list member should be
+#   - `Lfrom[sField] @ Ctest` succeeds when a list member should be
 #     generated.
+#
+#   selectRecordFromListByFieldsL(Lfrom, sFieldL, Ctest) : X1, ...
+#   - This procedure is identical to selectRecordFromListByField, except
+#     a list of field values (corresponding to the list of field names
+#     specified in sFieldL) is transmitted to Ctest.
+#   - Generate elements of Lfrom where contents of sField match criteria
+#     evaluated by Ctest, i.e., Ctest produces a value when contents are
+#     transmitted to it.
+#   - Lfrom is a list of records (or tables) having a field (or key) match-
+#     ing members of sFieldL
+#   - sFieldL is either:
+#     - a list of the names of fields in each record in Lfrom, or
+#     - a list of the names of keys in each table in Lfrom
+#   - `L @ Ctest` succeeds when a list member should be generated, where:
+#     - given any X from !Lfrom, L[i] is X[sFieldL[i]]
 #
 #   For example:
 #
@@ -69,8 +84,8 @@ procedure selectRecordFromListByField(Lfrom, sField, Ctest) #: produce matching 
   #           - records having a field named "sField"
   #           - tables having a key named "sField"
   # sField  - either:
-  #           - the name of a field in each record in the list
-  #           - the name of a key in each table in the list
+  #           - the name of a field in each record in Lfrom
+  #           - the name of a key in each table in Lfrom
   # Ctest   - a co-expression that succeeds when a value that is
   #           transmitted to it meets the required criteria
   local currentRecord
@@ -79,6 +94,28 @@ procedure selectRecordFromListByField(Lfrom, sField, Ctest) #: produce matching 
     @Ctest
     if currentRecord[sField] @ Ctest
       then suspend currentRecord
+  }
+  fail
+end
+
+procedure selectRecordFromListByFieldsL(Lfrom, sFieldL, Ctest) #: produce matching records (or tables)
+  # Lfrom   - a list of either:
+  #           - records having a field named "sField"
+  #           - tables having a key named "sField"
+  # sFieldL - either:
+  #           - L of the names of fields in each record in Lfrom
+  #           - L of the names of keys in each table in Lfrom
+  # Ctest   - a co-expression that succeeds when a value that is
+  #           transmitted to it meets the required criteria
+  local currentRecord, xmitL, C
+  every currentRecord := !Lfrom do {
+    C := ^Ctest
+    @C
+    xmitL := []
+    every put(xmitL, currentRecord[!sFieldL])
+    if xmitL @ C
+      then suspend currentRecord
+    while @ C # exhaust current C so that it may be collected
   }
   fail
 end

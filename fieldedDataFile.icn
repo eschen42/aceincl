@@ -69,8 +69,9 @@ record FieldedData(lines, fields) #: record holding two co-expression factories
 # FieldedDataFactory produces FieldedData populated according to format;
 #   as of now, only "tabular" format is supported
 procedure FieldedDataFactory(format, filePath) #: produce FieldedData for format
-  close(open(filePath, "r")) |
-    stop("FieldedDataFactory: Cannot open file for reading: " || filePath)
+  close(open(\filePath, "r")) |
+    stop( "FieldedDataFactory: Cannot open file for reading: " ||
+          (\filePath | "&null") )
   return case format of {
     # eventually add support for CSV and who knows what else
     "tabular" : FieldedData(tabularLines, tabularFields)
@@ -133,7 +134,9 @@ procedure getTabular(typeName, tsvPath, colL, sep, dflt) #: Produce L of RecTabl
   RecTableColTypeCheck(typeName, "string", "typeName")
   RecTableColTypeCheck(tsvPath,  "string", "tsvPath" )
 
+  $ifdef DEBUG
   write("getTabular parsing ", tsvPath)
+  $endif # DEBUG
   fieldedData := FieldedDataFactory("tabular", tsvPath)
   lineC := fieldedData.lines(open(tsvPath,"r"), sep) |
     stop(&progname, ": failed to open tabular file ",tsvPath)
@@ -174,6 +177,14 @@ procedure getTabular(typeName, tsvPath, colL, sep, dflt) #: Produce L of RecTabl
               pos(0) | move(1)
               }
       put(resultL, lineFieldL @ RecTableC)
+      $ifdef DEBUG
+      write("fields:")
+      every writes("  ",RecTableFields(resultL[-1]))
+      write()
+      write("values:")
+      every writes("  ",RecTableFieldVals(resultL[-1]))
+      write()
+      $endif # DEBUG
     }
   if *resultL > 0
     then return resultL
@@ -190,7 +201,7 @@ end
 #     single line.
 
 $ifndef ini_line_default
-  $define ini_line_default "default"
+$define ini_line_default "default"
 $endif # ini_line_default
 
 procedure iniLines(f) #: factory for C producing logical lines of an INI file
@@ -244,7 +255,7 @@ procedure iniFields(line) #: factory for C producing fields from a logical line 
 end
 
 $ifndef tbl_ini_default
-  $define tbl_ini_default "default"
+$define tbl_ini_default "default"
 $endif
 
 procedure getIni(ini) #: parse an INI file into a table of table

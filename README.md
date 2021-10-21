@@ -126,10 +126,23 @@ Procedures to transform data structures into includable Icon declarations and st
 
 Procedure to produce records from a list of records (or a list of tables), matching specified criteria.
 
+- This is currently NOT coded efficiently, so only use it on small lists or tables.
+- Also, at present, the co-expression is refreshed and (as an apparent consequence) leaks memory.
+- For a better way to do this, see [fix_selectRecordFromListByField.icn](https://sourceforge.net/p/unicon/mailman/attachment/CACb17F7MTimKsVuYS0LCmB6CpuE1pLvTZBtdCiNZRJEzFsFeKA%40mail.gmail.com/1/), which I will eventually apply here instead.
+  - Even so, there is yet the need to incorporate a "fuzzy binary search" to speed things up immensely for larger lists or tables.
+
 #### procedure `selectRecordFromListByField(Lfrom, sField, Ctest)` : R1, ...
-  - Produce matching records (or tables) `X`
-    - from list `Lfrom` (`type(Lfrom[i]) == "record" | "table"`)
-    - where `X[sField] @ Ctest` succeeds
+
+- Produce matching records (or tables) `X`
+  - from list `Lfrom` (`type(Lfrom[i]) == "record" | "table"`)
+  - where `X[sField] @ Ctest` succeeds
+
+#### procedure `selectRecordFromListByFieldL(Lfrom, sFieldL, Ctest)` : R1, ...
+
+- Produce matching records (or tables) `X`
+  - from list `Lfrom` (`type(Lfrom[i]) == "record" | "table"`)
+  - where this succeeds:<br />
+    `L := []; every put(L, X[!sFieldL]); L @ Ctest`
 
 ## wora.icn
 
@@ -199,10 +212,27 @@ For non-RecTable, return type(x).
 
 ### procedure `RecTableFields(x)` : s1, ...
 
-Produce RecTable's fields, or (likely) default value for non-RecTable:
+Produce RecTable's field names.
 
-- The default value will be produced for non-RecTable except when the
-  key that is the table itself has been assigned another value.
+- This will fail for a non-RecTable.
+
+### procedure `RecTableFieldsL(x)` : L
+
+Return a list of the values produced by RecTableFields(x).
+
+- This returns an empty list when x is not a RecTable instance.
+
+### procedure `RecTableFieldVals(x)` : s1, ...
+
+Produce RecTable's field values.
+
+- This will fail for a non-RecTable.
+
+### procedure `RecTableFieldValsL(x)` : L
+
+Return a list of the values produced by RecTableFieldVals(x).
+
+- This returns an empty list when x is not a RecTable instance.
 
 ### procedure `RecTableColTypeCheck(x, type_name, col_name, preamble)` : x
 

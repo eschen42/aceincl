@@ -94,9 +94,13 @@ procedure RecTable( rec_name_s, rec_fields_L, rec_data_L, rec_col_iL, rec_defaul
   RecTableColTypeCheck(rec_fields_L, "list", "rec_fields_L")
   if /rec_col_iL
     then {
+      rec_col_iL := []
       rec_col_S := set()
       every i := 1 to *rec_fields_L
-        do insert(rec_col_S, i)
+        do {
+          insert(rec_col_S, i)
+          put(rec_col_iL, i)
+        }
     } else {
       RecTableColTypeCheck(rec_col_iL, "list", "rec_col_iL")
       rec_col_S := set(rec_col_iL)  # assume these to be integers
@@ -104,19 +108,12 @@ procedure RecTable( rec_name_s, rec_fields_L, rec_data_L, rec_col_iL, rec_defaul
   if \rec_data_L
     then {
       RecTableColTypeCheck(rec_data_L, "list", "rec_data_L")
-      every i := 1 to *rec_fields_L
-        do {
-          if member(rec_col_S, i)
-            then T[rec_fields_L[i]] := rec_data_L[i]
-            else { rec_fields_L[i];    rec_data_L[i] }
-        }
+      every i := 1 to *rec_col_iL
+        do T[rec_fields_L[rec_col_iL[i]]] := rec_data_L[rec_col_iL[i]]
     }
   T[T] := [rec_name_s, set(rec_fields_L)]
-  every i := 1 to *rec_fields_L
-    do {
-      if member(rec_col_S, i)
-        then put(T[T], rec_fields_L[i])
-    }
+  every i := 1 to *rec_col_iL
+    do put(T[T], rec_fields_L[rec_col_iL[i]])
   return T
 end
 
@@ -130,19 +127,43 @@ procedure RecTableType(x) #: For RecTable, produce name and fields.
   suspend !(\x[x])
 end
 
-procedure RecTableFields(x) #: Produce RecTable's fields, or (likely) default value for non-RecTable:
-  # - The default value will be produced for non-RecTable except when the
-  #   key that is the table itself has been assigned another value.
-  local fldC
+procedure RecTableFieldsL(x) #: Return list of RecTable's fields, or empty list for non-RecTable:
+  # - An empty list will be produced for non-RecTable.
+  local fldL
   if type(x) ~== "table"
     then fail
-  if /x[x]
+  if \x[x]
     then {
-      fldC := create !(\x[x])
-      @fldC
-      @fldC
-      while suspend @fldC
-    }
+      fldL := []
+      every put(fldL, !(\x[x]))
+      pop(fldL)   # pop RecTypeName
+      pop(fldL)   # pop set of field names
+      return fldL # return list of field names
+    } # else "fail off end of procedure"
+end
+
+procedure RecTableFields(x) #: Produce RecTable's fields, or fail for non-RecTable:
+  local L
+  L := RecTableFieldsL(x)
+  suspend ! L
+end
+
+procedure RecTableFieldValsL(x) #: Return list of RecTable's field-values, or empty list for non-RecTable:
+  local valL
+  if type(x) ~== "table"
+    then fail
+  if \x[x]
+    then {
+      valL := []
+      every put( valL, x[!RecTableFieldsL(x)] )
+      return valL
+    } # else "fail off end of procedure"
+end
+
+procedure RecTableFieldVals(x) #: Produce RecTable's field-values, or fail for non-RecTable:
+  local L
+  L := RecTableFieldValsL(x)
+  suspend ! L
 end
 
 procedure RecTableColTypeCheck(x, type_name, col_name, preamble) #: abort on type mismatch
@@ -174,7 +195,6 @@ procedure RecTableColTypeCheck(x, type_name, col_name, preamble) #: abort on typ
   # runerr (i,x) -- terminate with run-time error
   #   Terminates program execution with error i and offending value x
   return ( RecTableType(x) ~== type_name
-         #, &dump := -1
          , &trace := -1
          , write( &errout
                 , preamble
