@@ -1,0 +1,554 @@
+"../rpn_core.rpn" import
+###########################################################################
+# Regression-test words
+###########################################################################
+# TODO provide tests of all primary words implemented in rpn.icn
+
+"teststore" :
+  "x" var
+  #verbose
+  "depth is " prints depth print
+  1066
+  x sto
+  "depth is " prints depth print
+  # "show:" print
+  # show
+  x rcl
+  "depth is " prints depth print
+  # "show:" print
+  # show
+  1066 ~=
+  if
+    "TOS is unexpectedly " prints x rcl print
+  else
+    terse
+    (
+      &null  # &null is discarded
+      1table # new table is pushed to TOS
+    )
+    terse
+    # "test sto" print
+    x sto
+    # "show:" print
+    # show
+    # "----------" print
+    # "test rcl" print
+    x rcl
+    # "----------" print
+    # "test tos[foo]:=bar" print
+    "foo" "bar"
+    "depth over print print:" print
+    depth over print print
+    []:=
+    # stk:
+    # L2 := list(1)
+    #    L2[1] := T36 := table(&null)
+    #       T36["foo"] := "bar"
+    
+    # pop T36 from stk; show T36["foo"]
+    "foo" []
+    # 3 >r rdepth print r> trace print
+    "3 >r rdepth print:" print
+    3 >r rdepth print
+    "r> print:" print
+    r> print
+    rdepth print
+    depth print
+  endif
+  ;
+
+"testaltconj" :
+  "\nconjunction test:\n" print
+  (
+    (& &) &             "first passed as it should" print
+    (& 3 4 < &drop &) & "second passed as it should" print
+    1 2 > &drop         "third passed but it should not" print
+  )
+  show
+  "\nalternation test 1:\n" print
+  (
+    1 2 > |drop "fourth failed as it should" print
+    2 3 > |drop "fifth failed as it should" print
+    5 4 > | "sixth failed but it should not" print
+  )
+  drop
+  show
+  "\nalternation test 2:\n" print
+  (
+    1 2 > |drop "seventh failed as it should" print
+    (| 3 4 > |drop 5 6 > |)
+          |drop "eighth failed as it should" print
+    5 4 > |drop "ninth failed but it should not" print
+  )
+  show
+  ;
+
+"testif1a" :
+  1 2 <
+  if
+    "if succeeds" print
+  endif
+  "testif1a" print
+  show
+  ;
+
+"testif1b" :
+  1 2 >
+  if
+    "if succeeds" print
+  endif
+  "testif1b" print
+  show
+  ;
+
+"testif2a" :
+  1 2 <
+  if
+    "if succeeds" print
+  else
+    "else succeeds" print
+  endif
+  "testif2a" print
+  show
+  ;
+
+"testif2b" : 
+  1 2 >
+  if
+    "if succeeds" print
+  else
+    "else succeeds" print
+  endif
+  "testif2b" print
+  show
+  ;
+
+"testif3a" : 
+  3 4 <
+  if
+    "outer if succeeds" print
+    1 2 >
+    if
+      "if in if succeeds" print
+    else
+      "else in if succeeds" print
+    endif
+  else
+    "outer else succeeds" print
+    1 2 >
+    if
+      "if in else succeeds" print
+    else
+      "else in else succeeds" print
+    endif
+  endif
+  "testif3a" print
+  show
+  drop
+  ;
+
+"testif3b" : 
+  3 4 >
+  if
+    "outer if succeeds" print
+    1 2 >
+    if
+      "if in if succeeds" print
+    else
+      "else in if succeeds" print
+    endif
+  else
+    "outer else succeeds" print
+    1 2 >
+    if
+      "if in else succeeds" print
+    else
+      "else in else succeeds" print
+    endif
+  endif
+  "testif3b" print
+  show
+  ;
+
+"testif3c" : 
+  3 4 <
+  if
+    "outer if succeeds" print
+    1 2 <
+    if
+      "if in if succeeds" print
+    else
+      "else in if succeeds" print
+    endif
+  else
+    "outer else succeeds" print
+    1 2 <
+    if
+      "if in else succeeds" print
+    else
+      "else in else succeeds" print
+    endif
+  endif
+  "testif3c" print
+  show
+  drop drop
+  ;
+
+"testif3d" : 
+  3 4 >
+  if
+    "outer if succeeds" print
+    1 2 <
+    if
+      "if in if succeeds" print
+    else
+      "else in if succeeds" print
+    endif
+  else
+    "outer else succeeds" print
+    1 2 <
+    if
+      "if in else succeeds" print
+    else
+      "else in else succeeds" print
+    endif
+  endif
+  "testif3d" print
+  show
+  drop
+  ;
+
+"testif3" : testif3a testif3b testif3c testif3d ;
+
+"testcase" :
+  2 case
+    1 of "case 1"         print endof
+    2 of
+      "case 2" print
+      "3" case
+        "2" of "case 2.2" print endof
+        "3" of "case 2.3" print endof
+        "4" of "case 2.4" print endof
+        "3" of "case 2.3b" print endof
+      endcase
+    endof
+    3 of "case 3"         print endof
+    2 of "case 2 reprise" print endof
+  endcase
+  show
+  ;
+
+
+"testwhile" :
+  1          # ( -- test_value )
+  ||:        # begin repeat
+    4 swap > # ( test_value -- result = { test_value | failure} )
+    while    # success: ( test_value -- test_value ) and continue
+             # failure: ( test_value -- ) and exit repeat
+    >r       # ( test_value -- ) save test value to rstk
+    # do work here
+    r print
+    r>       # ( -- test_value ) restore test value from rstk
+    1 +      # ( test_value -- test_value+1 )
+  :||        # end repeat
+  "testwhile" print
+  show
+  ;
+
+"testuntil" :
+  1          # ( -- test_value )
+  repeat     # begin repeat
+    dup      # ( test_value -- test_value test_value )
+    4 swap < # ( test_value -- result = { test_value | failure } )
+    until    # failure: ( test_value -- test_value ) and continue
+             # success: ( test_value -- ) and exit repeat
+    >r       # ( test_value -- ) save test value to rstk
+    # do work here
+    r print
+    r>       # ( -- test_value ) restore test value from rstk
+    1 +      # ( test_value -- test_value+1 )
+  endrepeat  # end repeat
+  drop       # clean up the successfully produced result
+  "testuntil" print
+  show
+  ;
+
+"testevery" :
+  4 8 1 toby # ( -- "create 4 to 8 by 1" )
+  every # ( -- @C )
+    print
+  do
+  "testevery" print
+  show
+  ;
+
+"testcreate" :
+  [ 
+    [ "\"testcreate 1\"" , # note the escaped quotes
+      "print" , # note that command is quoted
+      "\"done\"" ,
+      "&source" ,
+      "@"
+    ] , "eval"
+  ]
+  create
+  #&null swap @
+  1@
+  if
+    "done" swap ==
+    if   "* testcreate 1 produced \"" prints prints "\" as expected" prints cr prints
+    else 
+      show
+      "* testcreate 1 succeeded but didn't produce the expected value"
+      print
+      show
+    endif
+  else 
+    "* testcreate 1 failed unexpectedly" print
+  endif
+  "depth = " . depth . cr .
+  #show
+  [ "\"testcreate 2\" print \"done\" &source @", "eval" ]
+  create
+  &null swap @
+  if
+    "done" swap ==
+    if   "* testcreate 2 produced \"" prints prints "\" as expected" prints cr prints
+    else 
+      show
+      "* testcreate 2 succeeded but didn't produce the expected value"
+      print
+      show
+    endif
+  else 
+    "* testcreate 2 failed unexpectedly" print
+  endif
+  "depth = " . depth . cr .
+  #show
+  #-1 trace
+  #verbose # DEBUGging ACE
+  [ "testcreate 3" , "print" ]
+  create
+  &null swap
+  # -1 trace
+  # verbose
+  @
+  if   "* testcreate 3 succeeded unexpectedly" print
+  else "* testcreate 3 failed as expected"     print
+  endif
+  # terse
+  # 0 trace
+  "depth = " . depth . cr .
+  #show
+  [ "testcreate 4" , "1write" ]
+  create
+  &null swap @
+  if   "* testcreate 4 produced \"" prints prints "\" as expected" prints cr prints
+  else "* testcreate 4 failed unexpectedly" print
+  endif
+  "depth = " . depth . cr .
+  #show
+
+  ### "creating a coexpression from a string" print
+  ### # print image of &main
+  ### "main   : image(&main)    = " prints &main 1image prints " " prints cr prints
+  ### # print image of &current
+  ### "main   : image(&current) = " prints &current image prints " " prints cr prints
+
+  ### # co-expression definition - these strings will be concatenated
+  ### # first, print image of source
+  ### "\"co-expr: image(&source)  = \" prints &source 1image prints \" \" prints cr prints "
+  ### # first, print image of current
+  ### "\"co-expr: image(&current) = \" prints &current image prints \" \" prints cr prints "
+  ### # next, print "hello world" from the co-expression
+  ### "\"hello world\" print "
+  ### # finally, transmit "done" to the co-expression that resumed this one
+  ### "\"done\" &source @ "
+  ### # join the previous four strings
+  ### || || ||
+  ### # create the coexpression from the strings
+  ### create
+  ### # transmit &null to the co-expression
+  ### &null swap @
+  print # should print "done"
+  #show
+  ;
+
+###########################################################################
+# Experimental words
+###########################################################################
+"casetest_weird" :
+  "y" var 
+  "x" var
+  1 3 1 toby x sto
+  show
+  2 case 
+    &null x rcl @ 
+    dup y sto
+    of y rcl print endof
+  endcase
+  show
+  2 case 
+    &null x rcl @ 
+    dup y sto
+    of y rcl print endof
+  endcase
+  show
+  2 case 
+    &null x rcl @ 
+    dup y sto
+    of y rcl print endof
+  endcase
+  show
+  ;
+
+"conj1" : 
+  "conj1" print
+  (
+    1 2 < & drop        "first passed as it should" print
+    (& 3 4 < &drop &) & "second passed as it should" print
+    (& &) &             "third passed but it should not" print
+  )
+  show
+  ;
+
+"alt1" : 
+  "alt1" print
+  (
+    1 2 > |drop "first failed as it should" print
+    2 3 > |drop "second failed as it should" print
+    5 4 > |     "third failed but it should not" print
+  )
+  drop
+  (
+    1 2 > |drop "fourth failed as it should" print
+    (| 3 4 > |drop 5 6 > |)
+          |drop "fifth failed as it should" print
+    5 4 > |drop "sixth failed but it should not" print
+  )
+  show
+  ;
+
+# "print" : " 1write drop" 2|| eval ;
+"iftest"    : &if    "if continues"    print "if exits"    print ;
+"elsetest"  : &else  "else continues"  print "else exits"  print ;
+"endiftest" : &endif "endif continues" print "endif exits" print ;
+"test1" : iftest elsetest endiftest ; 
+"test2" : 
+  if
+    "if succeeds" print
+  else
+    "else succeeds" print
+  endif
+  "adios" print
+  ;
+"test3" : if "if succeeds" print endif "adios" print ;
+"test4" :
+  1 
+  ||: 
+    "repeat" print
+    3 swap >
+    while
+    >r
+    r print
+    r>
+    1 +
+  :||
+  "done" print
+  ;
+
+# example: creating a coexpression from a list, command line demo:
+#   echo "words.rpn" import ct2 show bye | rpn
+"ct2" :
+  [ 
+    "\"hello world\"" , # note the escaped quotes
+    "print" , # note that command is quoted
+    "\"done\"" ,
+    "&source" ,
+    "@",
+    "eval"
+  ]
+  create
+  show
+  &null swap @
+  print
+  ;
+"ct2a" :
+  [ 
+    "\"hello world\" print \"done\" &source @ ",
+    "eval"
+  ]
+  create
+  show
+  &null swap @
+  print
+  ;
+"ct3" :
+  [ 
+    [ "\"hello world 1\"" , # note the escaped quotes
+      "print" , # note that command is quoted
+      "\"done\"" ,
+      "&source" ,
+      "@"
+    ] , "eval"
+  ]
+  create
+  &null swap @
+  if
+    "done" swap ==
+    if   "* hello world 1 produced \"" . . "\" as expected" . cr .
+    else 
+      show
+      "* hello world 1 succeeded but didn't produce the expected value"
+      print
+      show
+    endif
+  else 
+    "* hello world 1 failed unexpectedly" print
+  endif
+  [ "\"hello world 2\" print \"done\" &source @", "eval" ]
+  create
+  &null swap @
+  if
+    "done" swap ==
+    if   "* hello world 2 produced \"" . . "\" as expected" . cr .
+    else 
+      show
+      "* hello world 2 succeeded but didn't produce the expected value"
+      print
+      show
+    endif
+  else 
+    "* hello world 2 failed unexpectedly" print
+  endif
+  [ "hello world 3" , "print" ]
+  create
+  &null swap @
+  if   "* hello world 3 succeeded unexpectedly" print
+  else "* hello world 3 failed as expected"     print
+  endif
+  [ "hello world 4" , "1write" ]
+  create
+  &null swap @
+  if   "* hello world 4 produced \"" . . "\" as expected" . cr .
+  else "* hello world 4 failed unexpectedly" print
+  endif
+  ;
+"ct3a" :
+  [ "\"hello world 2\" print \"done\" &source @", "eval" ]
+  create
+  &null swap @
+  if
+    "done" swap ==
+    if
+      "* hello world 2 produced " . . " as expected" . cr .
+    else 
+      "* hello world 2 succeeded but didn't produce the expected value"
+      print
+    endif
+  else 
+    "* hello world 2 failed unexpectedly" print
+  endif
+  show
+  ;
+# vim: sw=2 ts=2 et ai :

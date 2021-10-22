@@ -1,0 +1,67 @@
+###########################################################################
+# Standard words
+###########################################################################
+# Basic synonyms
+"+" : 2+ ;
+"-" : 2- ;
+"*" : 2* ;
+"/" : 2/ ;
+">" : 2> ;
+"<" : 2< ;
+"="    : 2=    if &succeed else &fail endif ;
+"=="   : 2==   if &succeed else &fail endif ;
+"==="  : 2===  if &succeed else &fail endif ;
+"~="   : 2~=   if &succeed else &fail endif ;
+"~=="  : 2~==  if &succeed else &fail endif ;
+"~===" : 2~=== if &succeed else &fail endif ;
+"||" : 2|| ;
+"put" : 2put ;
+"push" : 2push ;
+"get" : 1get ;
+"pop" : 1pop ;
+"pull" : 1pull ;
+"list" : 0list ;
+"[]" : 2[] ;
+"[]:=" : 3[]:= ;
+"image" : 1image ;
+"ximage" : 1ximage ;
+"1@" : &null swap @ ;
+
+# generators implemented as co-expressions
+"toby" : # ( start end incr -- "create start to end by incr" )
+  0list swap push swap push swap push "3..." put create ;
+
+# List initializer pattern [ comma, and, close brace, each, add, elements ]
+"[" : 0list >r ;         # ( -- )     create L; stash on return stack
+"," : r swap 2put drop ; # ( x -- )   put( L, x )
+"]" : r> swap 2put ;     # ( x -- L ) put( L, x ); push L to stack
+
+# secondary implementation of words without every ... do
+"words" :
+  # ( -- "create !words" )
+  [ "words" &main 0 3variable 1sort , "1!" ] create
+  every # ( -- @C )
+    1 [] . "  " .
+  endevery
+  cr .
+  ;
+
+"showdef" : # ( s -- ) Show definition of secondary word s
+  #show
+  # say what we're gonna do
+  "Definition of \"" prints dup prints "\"" prints cr prints
+  # get table from words global; push to stack
+  "words" &main 0 3variable # ( s -- s words )
+  # look for s in dictionary (the words table)
+  swap [] # ( s words -- words[s] )
+  # check if not null
+  1\ # ( words[s] -- \words[s] )
+  if # if not null, print ximage( words[s] )
+    ximage print
+  else # else gripe
+    "else, pre-drop" print 
+    "not in dictionary - may be a primitive" print
+  endif
+  ;
+
+# vim: sw=2 ts=2 et ai :

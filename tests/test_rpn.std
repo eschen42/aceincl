@@ -1,0 +1,263 @@
+words defined: 
+*  +  ,  -  /  1@  <  =  ==  ===  >  [  []  []:=  ]  alt1  casetest_weird  conj1  ct2  ct2a  ct3  ct3a  elsetest  endiftest  get  iftest  image  list  pop  pull  push  put  showdef  test1  test2  test3  test4  testaltconj  testcase  testcreate  testevery  testif1a  testif1b  testif2a  testif2b  testif3  testif3a  testif3b  testif3c  testif3d  teststore  testuntil  testwhile  toby  words  ximage  ||  ~=  ~==  ~===  
+
+
+running test1:
+if continues
+if exits
+endif continues
+endif exits
+
+running test2:
+if succeeds
+adios
+
+running test3:
+if succeeds
+adios
+
+running test4:
+repeat
+1
+repeat
+2
+repeat
+done
+
+running testaltconj:
+
+conjunction test:
+
+first passed as it should
+second passed as it should
+
+stk:
+L2 := list(0)
+rstk:
+L3 := list(0)
+
+alternation test 1:
+
+fourth failed as it should
+fifth failed as it should
+
+stk:
+L2 := list(0)
+rstk:
+L3 := list(0)
+
+alternation test 2:
+
+seventh failed as it should
+eighth failed as it should
+
+stk:
+L2 := list(0)
+rstk:
+L3 := list(0)
+
+running testcase:
+case 2
+case 2.3
+
+stk:
+L2 := list(0)
+rstk:
+L3 := list(0)
+
+running testcreate:
+testcreate 1
+* testcreate 1 produced "done" as expected
+depth = 0
+testcreate 2
+* testcreate 2 produced "done" as expected
+depth = 0
+testcreate 3
+* testcreate 3 failed as expected
+depth = 0
+testcreate 4
+* testcreate 4 produced "testcreate 4" as expected
+depth = 0
+
+running testevery:
+4
+5
+6
+7
+8
+testevery
+
+stk:
+L2 := list(0)
+rstk:
+L3 := list(0)
+
+running testif1a:
+if succeeds
+testif1a
+
+stk:
+L2 := list(1)
+   L2[1] := 2
+rstk:
+L3 := list(0)
+
+running testif1b:
+testif1b
+
+stk:
+L2 := list(1)
+   L2[1] := 2
+rstk:
+L3 := list(0)
+
+running testif2a:
+if succeeds
+testif2a
+
+stk:
+L2 := list(2)
+   L2[1] := 2
+   L2[2] := 2
+rstk:
+L3 := list(0)
+
+running testif2b:
+else succeeds
+testif2b
+
+stk:
+L2 := list(2)
+   L2[1] := 2
+   L2[2] := 2
+rstk:
+L3 := list(0)
+
+running testif3:
+outer if succeeds
+else in if succeeds
+testif3a
+
+stk:
+L2 := list(3)
+   L2[1] := 4
+   L2[2] := 2
+   L2[3] := 2
+rstk:
+L3 := list(0)
+outer else succeeds
+else in else succeeds
+testif3b
+
+stk:
+L2 := list(2)
+   L2[1] := 2
+   L2[2] := 2
+rstk:
+L3 := list(0)
+outer if succeeds
+if in if succeeds
+testif3c
+
+stk:
+L2 := list(4,2)
+   L2[2] := 4
+rstk:
+L3 := list(0)
+outer else succeeds
+if in else succeeds
+testif3d
+
+stk:
+L2 := list(3,2)
+rstk:
+L3 := list(0)
+
+running testif3a:
+outer if succeeds
+else in if succeeds
+testif3a
+
+stk:
+L2 := list(3)
+   L2[1] := 4
+   L2[2] := 2
+   L2[3] := 2
+rstk:
+L3 := list(0)
+
+running testif3b:
+outer else succeeds
+else in else succeeds
+testif3b
+
+stk:
+L2 := list(2)
+   L2[1] := 2
+   L2[2] := 2
+rstk:
+L3 := list(0)
+
+running testif3c:
+outer if succeeds
+if in if succeeds
+testif3c
+
+stk:
+L2 := list(4,2)
+   L2[2] := 4
+rstk:
+L3 := list(0)
+
+running testif3d:
+outer else succeeds
+if in else succeeds
+testif3d
+
+stk:
+L2 := list(3,2)
+rstk:
+L3 := list(0)
+
+running teststore:
+depth is 2
+depth is 2
+depth is 3
+depth over print print:
+bar
+5
+3 >r rdepth print:
+1
+r> print:
+3
+0
+3
+
+running testuntil:
+1
+2
+3
+4
+testuntil
+
+stk:
+L2 := list(3)
+   L2[1] := "bar"
+   L2[2] := 2
+   L2[3] := 2
+rstk:
+L3 := list(0)
+
+running testwhile:
+1
+2
+3
+testwhile
+
+stk:
+L2 := list(3)
+   L2[1] := "bar"
+   L2[2] := 2
+   L2[3] := 2
+rstk:
+L3 := list(0)

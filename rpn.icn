@@ -1,0 +1,1001 @@
+############################################################################
+#
+#	File:     rpn.icn
+#
+#	Subject:  Threaded Interpretive Language with RPN syntax
+#
+#	Authors:  Art Eschenlauer
+#
+#	Date:     October 21, 2008
+#
+############################################################################
+#
+#   This file is in the public domain.
+#
+############################################################################
+#
+#   Inspired by example by Steve Wampler:
+#     https://web.archive.org/web/20211011204544/https://sourceforge.net/p/unicon/mailman/message/6144067/
+#   and by R. G. Loeliger, _Threaded Interpretive Languages_:
+#     https://archive.org/details/R.G.LoeligerThreadedInterpretiveLanguagesTheirDesignAndImplementationByteBooks1981
+#     Loeliger, R. G. Threaded interpretive languages : their design and implementation / R.G. Loeliger. Peterborough, NH : BYTE Books, c1981.
+#          xiv, 251 p. : ill. ; 24 cm.
+#          QA76.7 .L63
+#          ISBN: 007038360X :
+#          https://lccn.loc.gov/80019392
+#
+############################################################################
+#  
+# definition-time words (which may have runtime side-effects)
+#   ";"  :        terminate word definition
+#   "if" :        ( x -- ) begin if else endif block
+#   "else" :      ( -- ) separate if from else clause; there is no "elseif"
+#   "endif" :     ( -- ) conclude if else endif block
+#   "case" :      ( x -- ) begin "case...endcase" phrase
+#   "of" :        ( -- ) begin "of...endof" phrase within "case...endcase"
+#   "endof" :     ( -- ) end "of...endof" phrase within "case...endcase"
+#   "endcase" :   ( -- ) end "case...endcase" phrase
+#   "repeat" :    ( -- ) begin "repeat...endrepeat" phrase
+#   "endrepeat" : ( -- ) end "repeat...endrepeat" phrase
+#   "||:" :       ( -- ) synonym for "repeat"
+#   ":||" :       ( -- ) synonym for "endrepeat"
+#   "while" :     success: ( x -- x ) remain in "repeat...endrepeat"
+#                 failure: ( x -- )   exit from "repeat...endrepeat" 
+#   "until" :     failure: ( x y -- x ) remain in "repeat...endrepeat"
+#                 success: ( x y -- )   exit from "repeat...endrepeat" 
+#   "every" :     ( C -- @C* ) 
+#                   Run time effect:
+#                     Push C to return stack
+#                     Begin loop
+#                     At the beginning of each repetition
+#                       Push result of resumption of C to stack
+#                       Break if resumption fails
+#   "do" :        ( -- )
+#                   Run time effect:
+#                     End loop
+#                     Pop C from return stack
+#                 
+# standard execution-time words
+#   ":" :         begin word definition
+#   "&current" :  ( -- C ) push &current co-expression to stack
+#   "&main" :     ( -- C ) push &main co-expression to stack
+#   "&source" :   ( -- C ) push effective &source co-expression to stack
+#   "." :         ( v -- ) synonym for "prints"
+#   "@" :         ( x C -- v ) push result of x @ C to stack
+#   "3[]:=" :     ( L i v -- L ) L[i] := v
+#   "bye" :       ( -- ) quit current level
+#   "cr" :        ( -- crlf ) push crlf marker; pass to "prints" to complete
+#                             output of partial string; see "prints"
+#   "create" :    ( s -- ) pop string; create & push co-expression
+#   "depth" :     ( -- i ) number of items on stack
+#   "drop" :      ( v -- ) pop top item off stack and discard it
+#   "dup" :       ( v -- v v ) push a second (shallow) copy of item to stack
+#   "eval" :      ( s -- ) pop string from stack; parse and execute it
+#   "import" :    ( s -- ) tos is file name; open file as input
+#   "not" :       ( -- ) invert failure status at top of return stack
+#   "over" :      ( v x -- v x v ) push shallow copy of second item on stack
+#   "print" :     ( v -- ) write string(v) to output
+#   "printimage": ( v -- ) write image(v) to output
+#   "prints" :    ( v -- ) write partial string(v) to output
+#   "printximage": ( v -- ) write ximage(v) to output
+#   ">r" :        ( v -- ) pop tos and push to return stack
+#   "r>" :        ( -- v ) pop return stack and push to stack
+#   "r" :         ( -- v ) push shallow copy of top of return stack
+#   "rcl" :       ( var -- v ) pop variable and push value it contains
+#   "rdepth" :    ( -- i ) push depth of return stack
+#   "sto" :       ( v var -- ) pop var and value; store value in var
+#   "swap" :      ( a b -- b a ) exchange to two values on stack
+#   "show" :      ( -- ) show both return and data stacks
+#   "terse" :     ( -- ) less output (default, see "verbose")
+#   "verbose" :   ( -- ) more output; good for tracing
+#   "var" :       ( s -- ) declare a (global) variable
+#
+# hints:
+# * See "Standard Words" and "Regression-test words" in tests.rpn for examples
+# * See Unicon\ipl\incl\invkdefs.icn for operators you can use
+# * However, you generally must specify the number of arguments 
+#   before the operator or procedure name. For example,
+#   + Use "1-" to indicate the prefix minus
+#   + use "2-" for the infix minus operator
+#
+# TODO
+# - use Stream interface to Get input values
+# NOT TO DO
+# - export to file and/or load/save screens from screen file
+#   because control words add extra words; might want to write a word
+#   definition to process definitions in a showdef-like manner
+
+link ximage # for ximage( )
+link escapesq # for escapeseq( ), escchar( )
+
+# $define flr (write(&error,"\n<-- *LCtoken=",*LCtoken),if &trace = 0 then &trace := 1 else &null, gFailure())
+$define flr g_f
+# $define sccss (if &trace = 0 then &trace := 1 else &null, gSuccess())
+$define sccss g_s
+# $define Produce ( pop( LCtoken ) )
+$define Produce ( status[*LCtoken - 1] := status[*LCtoken], pop( LCtoken ) )
+$define Fail    ( status[*LCtoken - 1] := flr             , pop( LCtoken ) )
+$define Succeed ( status[*LCtoken - 1] := sccss           , pop( LCtoken ) )
+
+# _POSIX is not defined for Icon but is for Unicon
+$ifdef _POSIX
+  $define _UNICON 1
+  $undef _ICON
+$else
+  $define _ICON 1
+  $undef _UNICON
+$endif
+
+$ifdef RPN_MAIN
+procedure main( )
+  init_globals( )
+  interp( [ create token( hear ) ], [ ], "\nOK " )
+end
+$endif
+
+record failure( ) # no fields by design
+record success( ) # ditto
+record crlf( )    # ditto
+
+global echo
+global var
+global words
+global g_f       # singleton instance of failure record
+global g_s       # singleton instance of success record
+global cr        # singleton instance of crlf    record
+global ws        # whitespace cset
+global nws       # non-whitespace cset
+global hear      # input  message co-expression
+global say       # output message line co-expression
+global says      # output message line portion co-expression
+$ifdef DEBUG
+global debug     # debug output message co-expression
+$endif # DEBUG
+global gripe     # error  message co-expression
+
+procedure cofailure() # global representing failure
+end
+
+procedure gFailure( )
+  return g_f
+end
+
+procedure gSuccess( )
+  return g_s
+end
+
+procedure init_globals( )
+  # set up co-expressions for access to streams
+  local buf, init_source
+  buf := ""
+  init_source := &current
+  @( gripe := create repeat ( buf := @&source
+                            , if buf === cofailure
+                                then
+                                  cofailure @ init_source
+                                else
+                                  write( &errout
+                                       , if string(buf) 
+                                         then buf 
+                                         else image(buf) 
+                                       )
+                            )
+   )
+  $ifdef DEBUG
+  @( debug := create repeat ( buf := @&source
+                            , if buf === cofailure
+                                then
+                                  cofailure @ init_source
+                                else
+                                  echo( &errout
+                                      , if string(buf) 
+                                        then buf 
+                                        else image(buf) 
+                                      )
+                            )
+   )
+  $endif # DEBUG
+  @( say   := create repeat ( case buf := @&source of {
+                                cofailure:
+                                  cofailure @ init_source
+                                cr:
+                                  write(&output)
+                                default:
+                                  write( &output
+                                       , if string(buf) 
+                                         then buf 
+                                         else ximage(buf) 
+                                       )
+                              }
+                            )
+   )
+  @( says  := create repeat ( buf := @&source
+                            , if buf === cr 
+                                then
+                                  write( &output )
+                                else
+                                  writes( &output
+                                  , if string(buf) 
+                                    then buf 
+                                    else ximage(buf) 
+                                  )
+                            )
+   )
+  hear     := create ! &input
+  g_f      := failure( ) # singleton
+  g_s      := success( ) # singleton
+  cr       := crlf( )    # singleton
+  var      := table( ) # storage space for variables
+  words    := table( ) # definitions of secondary words
+  ws       := ' \t'
+  nws      := &cset -- ws
+  echo     := 1     # set to write for verbose; set to 1 for terse
+end
+
+# push LCtoken; null status
+procedure init_status( status, LCtoken, Ctoken )
+  push( LCtoken, Ctoken )
+  status[ *LCtoken ] := &null
+  return LCtoken
+end
+
+# instance of interpreter
+procedure interp(
+  LCtoken # list of co-expressions producing one token per activation
+, stk     # data stack
+, prompt  # stderr input prompt, only set this to not-null for an
+          #   interactive, root-level interpreter
+)
+  local tok     # current token
+  local toktype # type(current token)
+  local x       # scratch variable
+  local i       # scratch variable (integer)
+  local f       # scratch variable (file or function)
+  local fnm     # scratch variable (function name)
+  local rstk    # mock return stack
+  local def     # word definition (non-null if definition in progress)
+  local source  # value of &source when interpreter is called
+  local status  # table of results; key = *LCtoken
+  source := &source
+  status := table( )
+  /stk := [ ]     # init data stack if null
+  rstk := [ ]     # init "return" stack
+  \prompt @ gripe
+  repeat { # repeat once for each token
+    repeat  # repeat till token found or quit if no token found
+      ( *LCtoken>0
+      , tok := @LCtoken[1]
+      , break 
+      ) |
+      ### 1( Produce
+      ###  , if (*stk > 0, cofailure === stk[-1])
+      ###      then pop(stk) & write("cofailure")
+      ###      else write("Produce")
+      ###  ) |
+      Produce |
+      break break 
+    # end repeat till token found
+    $ifdef DEBUG
+    ( "  <- (" || *LCtoken || ") [" || type(status[*LCtoken]) ||
+      "] tos: " || (image(stk[1])|"") || ("\n  -> token: " || image( tok )) ||
+      ", *status: " || *status
+    ) @ debug
+    if \def then ( "(definition)" ) @ debug
+    $endif # DEBUG
+    if \def 
+    then case tok of {
+      ";"  : # terminate word definition
+        def := &null
+      # regression-test: echo "tests.rpn" import testif.* | rpn
+      "if" : # begin if else endif block
+        ( put( def[1], "# if" )
+        , push( def, [ ] )
+        , put( def[2], def[1] )
+        , put( def[1], "&if" )
+        )
+      # regression-test: echo "tests.rpn" import testif[23].* | rpn
+      "else" : # separate if from else clause; there is no "elseif"
+        ( pop( def )
+        , put( def[1], "# else" )
+        , push( def, [ ] )
+        , put( def[2], def[1] )
+        , put( def[1], "&else" )
+        )
+      # regression-test: echo "tests.rpn" import testif.* | rpn
+      "endif" : # conclude if else endif block
+        ( pop( def )
+        , put( def[1], "# endif" )
+        )
+      # regression-test: echo "tests.rpn" import testcase | rpn
+      "case" : # begin "case ... endcase" phrase
+        ( put( def[1], "# case" )
+        , push( def, [ ] )
+        , put( def[2], def[1] )
+        , put( def[1], ">r" )
+        )
+      # regression-test: echo "tests.rpn" import testcase | rpn
+      "of" : # begin "of ... endof" phrase
+        ( put( def[1], "# of" )
+        , push( def, [ ] )
+        , put( def[2], def[1] )
+        , put( def[1], "&of" )
+        )
+      # regression-test: echo "tests.rpn" import testcase | rpn
+      "endof" : # end of "of ... endof" phrase
+        ( put( def[1], "&endof" )
+        , pop( def )
+        , put( def[1], "# endof" )
+        )
+      # regression-test: echo "tests.rpn" import testcase | rpn
+      "endcase" : # end of "case ... endcase" phrase
+        ( put( def[1], "&endcase" )
+        , pop( def )
+        , put( def[1], "# endcase" )
+        )
+      # regression-test: echo "tests.rpn" import testaltconj | rpn
+      "("  : # beginning of anonymous secondary
+        ( put( def[1], "# (" )
+        , push( def, [ ] )
+        , put( def[2], def[1] )
+        )
+      # regression-test: echo "tests.rpn" import testaltconj | rpn
+      "(&" : # beginning of conjunction
+        ( put( def[1], "# (&" )
+        , push( def, [ ] )
+        , put( def[2], def[1] )
+        )
+      # regression-test: echo "tests.rpn" import testaltconj | rpn
+      "(|" : # beginning of alternation
+        ( put( def[1], "# (|" )
+        , push( def, [ ] )
+        , put( def[2], def[1] )
+        )
+      # regression-test: echo "tests.rpn" import testaltconj | rpn
+      ")" : # end of anonymous secondary
+        ( pop( def )
+        , put( def[1], "# )" )
+        )
+      # regression-test: echo "tests.rpn" import testaltconj | rpn
+      "&)" : # end of conjunction
+        ( put( def[1], "&succeed" )
+        , pop( def )
+        , put( def[1], "# &)" )
+        )
+      # regression-test: echo "tests.rpn" import testaltconj | rpn
+      "|)" : # end of alternation
+        ( put( def[1], "&fail" )
+        , pop( def )
+        , put( def[1], "# |)" )
+        )
+      # regression-test: echo "tests.rpn" import testwhile | rpn "testuntil"
+      "||:" | "repeat" : # beginning of repeated code
+        ( put( def[1], "# repeat" )
+        , push( def, [ ] )
+        , put( def[2], def[1] )
+        )
+      # regression-test: echo "tests.rpn" import testwhile | rpn "testuntil"
+      ":||" | "endrepeat" : # end of repeated code
+        ( put( def[1], "&endrepeat" )
+        , pop( def )
+        , put( def[1], "# endrepeat" )
+        )
+      # regression-test: echo "tests.rpn" import testwhile | rpn
+      "while" : # exit from repeated code if top of rstk is failure
+        put( def[1], "&while" )
+      # regression-test: echo "tests.rpn" import testuntil | rpn
+      "until" : # exit from repeated code if top of rstk isn't failure
+        put( def[1], "&until" )
+      # regression-test: echo "tests.rpn" import testevery | rpn
+      #   "every" :     ( C -- @C* ) 
+      #                   Run time effect:
+      #                     Push C to return stack
+      #                     Begin loop
+      #                     At the beginning of each repetition
+      #                       Push result of resumption of C to stack
+      #                       Break if resumption fails
+      "every" : # begin an every ... do loop
+        {
+          put( def[1], "# every" )
+          put( def[1], ">r" ) # move C to rstk
+          push( def, [ ] ) # begin repeat 
+          put( def[2], def[1] )
+          # continue to repeat while C produces results
+          put( def[1], "&null", "r", "@", "&everyif" )
+        }
+      # regression-test: echo "tests.rpn" import testevery | rpn
+      "do" | "endevery" : # end an every ... do loop
+        {
+          put( def[1], "&endrepeat" )
+          pop( def )
+          put( def[1]
+             , "# clean up after every"
+             , "r>", "drop"
+             , "# do = endevery" )
+        }
+      "&cr" :
+        &null # null so that it succeeds
+      default :
+        put( def[1], tok )
+    }
+    else { # /def fails
+      # if case toktype := type(tok) succeeds
+      # or case tok succeeds
+      # or push( stk , numeric(tok) )
+      # or tok ? ( i := tab(many(&digits))
+      #          , fnm := tab(0)
+      #          , f := proc( fnm, i, &current )
+      #          )
+      # or push( stk, \var[tok] )
+      # or ( toktype == "string", tok[1] == "#" )
+      # then succeed
+      # else do nothing (messaging an error proved problemmatic)
+      case toktype := type(tok) of {
+        "list" :
+          # process implicit secondaries (i.e., conditional code)
+          init_status( status, LCtoken, create ! tok )
+        "string" :
+          # process string-literal tokens
+          tok ? push( stk , 2( ="\"" , tab(-1) , ="\"")\1)        |
+          # process explicit secondaries (i.e., defined words)
+          ( \ (words[tok])
+          , init_status( status, LCtoken, create ! words[tok])
+          )
+        default : 
+          &null # nothing to worry about ... yet
+      }                                                                  |
+      case tok of {
+        # special-case primitives
+        ":" : # begin word definition
+          ( *stk>0, type(stk[1])=="string"
+          , def := [ ( words[map(rpop(stk))] ) := [ ] ]
+          )
+        # handlers for conditional code
+
+        # regression-test: echo "tests.rpn" import testevery | rpn
+        "&everyif" : # beginning of an every...do implicit secondary
+          if *LCtoken < 2
+            then "&everyif: not permitted at top level" @ gripe
+          else if status[*LCtoken] === flr 
+            then Fail
+          else
+            &null # push( stk, sccss )
+        # regression-test: echo "tests.rpn" import testuntil | rpn
+        "&until" : # exit from within a repeat...endrpeat implicit secondary
+          if
+            *LCtoken < 2
+          then
+            "&until: not permitted at top level" @ gripe
+          else if
+             status[*LCtoken] ~=== flr
+          then {
+            Produce
+            pop( stk )
+          }
+          else
+            &null
+        # regression-test: echo "tests.rpn" import testwhile | rpn
+        "&while" : # exit from within a repeat...endrpeat implicit secondary
+          if
+            *LCtoken < 2
+          then
+            "&while: not permitted at top level" @ gripe
+          else if
+            status[*LCtoken] === flr 
+          then
+            Fail
+          else
+            &null
+        # regression-test: echo "tests.rpn" import testif.* | rpn
+        "&if" : # beginning of an if...endif implict secondary
+          if
+            *LCtoken < 2
+          then
+            "&if: not permitted at top level" @ gripe
+          else if
+            status[*LCtoken - 1] === flr 
+          then
+            Fail
+          else
+            status[*LCtoken] := sccss
+        # regression-test: echo "tests.rpn" import testif[23].* | rpn
+        # "&else" goes at begining of an implicit secondary; see "else"
+        "&else" :
+          if
+            *LCtoken < 2
+          then
+            "&else: not permitted at top level" @ gripe
+          else if
+            status[*LCtoken - 1] === sccss
+          then
+            Succeed
+          else
+            status[*LCtoken] := sccss
+        # regression-test: echo "tests.rpn" import testaltconj | rpn
+        "&" : # separate terms in a conjunction
+          if
+            *LCtoken < 2
+          then
+            "&: not permitted at top level" @ gripe
+          else if
+            status[*LCtoken] === flr 
+          then
+            Fail
+          else
+            status[*LCtoken] := sccss
+        # regression-test: echo "tests.rpn" import testaltconj | rpn
+        "&drop" : # separate terms in a conjunction, pop stack on success
+          if
+            *LCtoken < 2
+          then
+            "&drop: not permitted at top level" @ gripe
+          else if
+            status[*LCtoken] === flr 
+          then
+            Fail
+          else
+            ( status[*LCtoken] := sccss
+            , pop(stk) | ( "&drop: empty stack" @ gripe )
+            )
+        # regression-test: echo "tests.rpn" import testaltconj | rpn
+        "|" : # separate terms in an alternation
+          if
+            *LCtoken < 2
+          then
+            "|: not permitted at top level" @ gripe
+          else if
+            status[*LCtoken] === sccss 
+          then
+            Succeed
+        # regression-test: echo "tests.rpn" import testaltconj | rpn
+        "|drop" : # separate terms in a alternation, pop stack on success
+          if
+            *LCtoken < 2
+          then
+            "|drop: not permitted at top level" @ gripe
+          else if
+            status[*LCtoken] === sccss
+          then
+            ( Succeed
+            , pop(stk) | ( "|drop: empty stack" @ gripe )
+            )
+        # regression-test: echo "tests.rpn" import testcase | rpn
+        "&of" : # beginning of an of...endof implict secondary
+          #  pop stk; compare to top of rstk; 
+          #  if same, execute to &endof, which Produces two levels
+          #  if different, Produce null so next "&of" can process
+          if
+            *LCtoken < 3
+          then
+            "&of: not permitted at top or second level" @ gripe
+          else if
+            *rstk < 1 | *stk < 1
+          then
+            "&of: requires value on both data and return stacks" @ gripe
+          else if
+            rstk[1] === pop( stk )
+          then
+            pop( rstk ) # continue secondary till "&endof"
+          else
+            Produce
+        # regression-test: echo "tests.rpn" import testcase | rpn
+        "&endof" : # end of an of...endof implict secondary
+          ( Produce, Produce ) # pass result of phrase two secondaries up
+        # regression-test: echo "tests.rpn" import testcase | rpn # via "endcase"
+        "&endcase" : # end of a case...endcase implict secondary
+          Fail # if "&endcase" is executed, then case...endcase fails
+        # regression-test: echo "tests.rpn" import testwhile | rpn "testuntil"
+        "&endrepeat" : # end of a repeat...endrepeat implicit secondary
+          LCtoken[1] := ^LCtoken[1] # refresh secondary's co-expression
+
+        # ordinary primitives
+        # TODO Decide out how to expose primitives so they can be 
+        #      produced by "words".
+        "&cr" :
+          if *LCtoken = 1
+            then
+              ( echo( &errout
+                    , "  .. tos-> "
+                    , ximage( (*stk>0, stk[1]) ) | "&cr: empty stack" 
+                    )
+              , ( \prompt @ gripe ) | &null
+              )
+            else &null
+        # regression-test: echo "tests.rpn" import testcreate | rpn
+        "&current" :
+          push( stk, &current )
+        # regression-test: echo "tests.rpn" import testaltconj | rpn # via "|)"
+        "&fail" : 
+          status[*LCtoken] := flr
+        # regression-test: echo "tests.rpn" import testaltconj | rpn # via "&)"
+        "&succeed" : 
+          status[*LCtoken] := sccss
+        # regression-test: echo "tests.rpn" import testcreate | rpn
+        "&main" :
+          push(stk,&main)
+        # regression-test: echo "tests.rpn" import testaltconj | rpn # via "every"
+        "&null" : 
+          push( stk, &null )
+        # regression-test: echo "tests.rpn" import testcreate | rpn
+        "&source" :
+          push( stk, source )
+        # regression-test: echo "tests.rpn" import testcreate | rpn
+        "@" : # ( x C -- v ) push result of x @ C to stack
+          if *stk < 2 | not type(stk[1])=="co-expression" 
+          then ("@ ( x C -- v ): tos is " || type(stk[1]) ) @ gripe
+          else ( stk[1] :=: stk[2]
+               $ifdef _UNICON # if this is Unicon
+               , push( stk, pop(stk) @ pop(stk) ) | 
+                 ( 
+                   $ifdef DEBUG
+                   "\"@\" ( x C -- v ): co-expression failure" @ debug ,
+                   $endif # DEBUG
+                   status[*LCtoken] := flr
+                 )
+               $else # else this is Icon
+               , {
+                   i := *stk
+                   push( stk, pop(stk) @ pop(stk) ) 
+                   if (*stk > 0, cofailure === stk[1])
+                     then (
+                         pop(stk) ,
+                         $ifdef DEBUG
+                         "\"@\" ( x C -- v ): co-expression failure" @ debug ,
+                         $endif # DEBUG
+                         status[*LCtoken] := flr
+                       )
+                   else if *stk + 1 ~= i
+                     then (
+                         $ifdef DEBUG
+                         "\"@\" ( x C -- v ): co-expression produced no value" @ debug ,
+                         $endif # DEBUG
+                         status[*LCtoken] := flr
+                       )
+                   else stk
+                 }
+               $endif # _UNICON
+               )
+        # regression-test: echo "tests.rpn" import teststore | rpn
+        "3[]:=" : # ( L i v -- L ) L[i] := v
+          ( *stk>2, type(stk[3])=="table"
+          , push(stk,elAssign(rpop(stk),rpop(stk),rpop(stk)))
+          )
+        "bye" : # ( -- ) quit current level
+          break
+        # regression-test: echo "tests.rpn" import testcreate | rpn
+        "cr" : # ( -- crlf ) push crlf marker for says macro
+          push( stk, cr )
+        # regression-test: echo "tests.rpn" import testcreate | rpn
+        "create" : # ( s -- ) pop s or L from stack; create & push co-expr
+          if *stk=0
+          then "create ( s -- ): empty stack" @ gripe
+          else case type(stk[1]) of {
+            "string" :
+               ( x := pop(stk)
+               , x := create x
+               , x := create token(x)
+               , push( stk, create interp( [ x ], [ ] ) )
+               )
+             "list" : # not doing any copy here; list members are mutable
+               if stk[1][-1] ? 
+                    ( i := tab(many(&digits))
+                    , fnm := tab(0)
+                    , f := proc( fnm, i, &current )
+                    )
+               then {
+                 # write("create primitive from list")
+                 # init local variables for co-expression
+                 x := [ ] ; pull( stk[1] )
+                 # shallow copy, in reverse order
+                 while put( x, pop( stk[1] ) )
+                 pop( stk )
+                 # create co-expression
+                 push( stk, create f ! x )
+               }
+               else {
+                 # init local variables for co-expression
+                 x := [ ] ; f := pull( stk[1] )
+                 # shallow copy, in reverse order
+                 while put( x, pop( stk[1] ) )
+                 pop( stk )
+                 # create co-expression
+                 f := create f
+                 f := create token(f)
+                 #push( stk, create interp( [ f ], x ) | cofailure@&source | &fail | stop("complete infinite failure") )
+                 push( stk, create interp( [ f ], x ) | cofailure@&source | "complete infinite failure" )
+               }
+           }
+        # regression-test: TODO
+        "depth" : # ( -- i ) number of items on stack
+          push( stk, *stk )
+        # regression-test: echo "tests.rpn" import testif3. | rpn "testaltconj" "testuntil"
+        "drop" : # ( v -- ) pop top item off stack and discard it
+          if *stk=0
+          then "drop ( v -- ): empty stack" @ gripe
+          else pop(stk)
+        # regression-test: echo "tests.rpn" import testuntil | rpn
+        "dup" : # ( v -- v v ) push a second (shallow) copy of item to stack
+          if *stk=0
+          then "dup ( v -- v v ): empty stack" @ gripe
+          else push(stk,stk[1])
+        # regression-test: echo "tests.rpn" import testcreate | rpn
+        "eval" : # ( sL -- ) pop string or (list of) from stack; parse and execute it
+          if *stk=0
+          then "eval ( s -- ): empty stack" @ gripe
+          else if
+            type(stk[1])=="string"
+          then
+            init_status( status
+                       , LCtoken
+                       , create token( create pop(stk) )
+                       )
+          else if
+            type(stk[1])=="list"
+          then
+            init_status( status
+                       , LCtoken
+                       , create token( create ! pop(stk) )
+                       )
+          else 
+            ( "eval ( x -- ): not implemented for x of type " ||
+              type(stk[1]) ) @ gripe
+        # regression-test: makefile
+        "import" : # ( s -- ) tos is file name; open file as input 
+          if *stk=0
+          then "import ( s -- ): empty stack" @ gripe
+          else ( type(stk[1])=="string"
+               , f := open(pop(stk))
+               , init_status( status
+                            , LCtoken
+                            , create token( 
+                                create ! f | ( close(f), &fail )
+                              )
+                            )
+               )
+        # regression-test: TODO
+        "not" : # ( -- ) invert failure status at top of return stack
+          if 
+            not status[*LCtoken] === flr 
+          then
+            status[*LCtoken] := flr
+        # regression-test: TODO
+        "over" : # ( v a -- v a v ) push shallow copy of second item on stack
+          if *stk<2
+          then "over ( v a -- v a v ): need two items on stack" @ gripe
+          else push( stk, stk[2] )
+        # regression-test: echo "tests.rpn" import test.* | rpn
+        "print" : # ( v -- ) write v to output
+          pop(stk) @ say
+        # regression-test: TODO
+        "printimage" : # ( v -- ) write image(v) to output
+          image(pop(stk)) @ say
+        # regression-test: echo "tests.rpn" import testcreate | rpn
+        "." | 
+        "prints" : # ( v -- ) write v to output
+          pop(stk) @ says
+        "printximage" : # ( v -- ) write ximage(v) to output
+          ximage(pop(stk)) @ say
+        # regression-test: echo "tests.rpn" import testwhile | rpn "testuntil"
+        ">r" : # ( v -- ) pop tos and push to return stack
+          if *stk=0
+          then ">r ( v -- ): empty stack" @ gripe
+          else push( rstk, pop(stk) )
+        # regression-test: echo "tests.rpn" import testwhile | rpn "testuntil"
+        "r>" : # ( -- v ) pop return stack and push to stack
+          if *rstk=0
+          then "r> ( -- v ): empty return stack" @ gripe
+          else push( stk, pop(rstk) )
+        # regression-test: echo "tests.rpn" import testwhile | rpn "testuntil"
+        "r" : # ( -- v ) push shallow copy of top of return stack
+          if *rstk=0
+          then "r ( -- v ): empty return stack" @ gripe
+          else push( stk, rstk[1] )
+        # regression-test: echo "tests.rpn" import teststore | rpn
+        "rcl" : # ( L -- v ) pop variable and push value it contains
+          if *stk=0
+          then "rcl ( L -- v ): empty stack" @ gripe
+          else ( type(stk[1])=="list", stk[1]:=stk[1][1] )
+        # regression-test: echo "tests.rpn" import teststore | rpn
+        "rdepth" : # ( -- i ) push depth of return stack
+          push( stk, *rstk )
+        # regression-test: echo "tests.rpn" import teststore | rpn
+        "sto" : # ( v L -- ) pop var and value; store value in var
+          if *stk<2
+          then "sto ( v var -- ): need two items on stack" @ gripe
+          else if type(stk[1])~=="list"
+          then "sto ( v var -- ): top of stack must be list" @ gripe
+          else ( ( stk[1][1] := stk[2] ) | put( stk[1], stk[2] )
+               , pop(stk), pop(stk)
+               )
+        # regression-test: echo "tests.rpn" import testwhile | rpn "testuntil" "testcreate"
+        "swap" : # ( a b -- b a ) exchange to two values on stack
+          if *stk<2
+          then "swap ( a b -- b a ): need two items on stack" @ gripe
+          else stk[1] :=: stk[2]
+        # regression-test: echo "tests.rpn" import test.* | rpn
+        "show" : # ( -- ) show both return and data stacks, deep
+          ( "\nstk:\n"  || ximage(stk) || 
+            "\nrstk:\n" || ximage(rstk) ) @ say
+        # regression-test: echo "tests.rpn" import teststore | rpn
+        "peep" : # ( -- ) show both return and data stacks, shallow
+          ( "\nstk:\n"  || image(stk) || 
+            "\nrstk:\n" || image(rstk) ) @ say
+        # regression-test: echo "tests.rpn" import teststore | rpn
+        "terse" : # ( -- ) less output (default, see "verbose")
+          echo := 1
+        # now in tests.rpn "toby" : # ( f t b -- C ) push create f to t by b
+        # regression-test CANCELED: echo "tests.rpn" import teststore | rpn
+        "trace" : # ( v -- ) pop tos and sets &trace
+          if *stk=0
+          then "trace ( v -- ): empty stack" @ gripe
+          else &trace := integer(pop( stk )) 
+        # regression-test: echo "tests.rpn" import teststore | rpn
+        "verbose" : # ( -- ) more output; good for tracing
+          echo := write
+        # regression-test: echo "tests.rpn" import teststore | rpn
+        "var" : # ( s -- ) declare a (global) variable
+          if *stk=0
+          then "var ( s -- ): empty stack" @ gripe
+          else var[map(rpop(stk))]:=[ ]
+        # definition-only words
+        "if"        |
+        "else"      |
+        "endif"     |
+        "case"      |
+        "of"        |
+        "endof"     |
+        "endcase"   |
+        "repeat"    |
+        "||:"       |
+        "while"     |
+        "until"     | 
+        "endrepeat" | 
+        ":||" :
+           2( ( tok || ": token only valid during word definition" ) @ gripe
+            , [ stk[1] ]
+            )
+      }
+      push( stk , numeric( tok ) )                                     |
+      ( toktype == "string"
+      , # e.g., for "1write" produce proc("write",1)
+        if
+          tok ? ( i := tab(many(&digits))
+                $ifdef DEBUG
+                , ( "  .. tok: " || tok ) @ debug
+                $endif # DEBUG
+                , fnm := tab(0)
+                , f := proc( fnm, i, &current ) # 3rd arg for Unicon...
+                $ifdef DEBUG
+                , ( "  .. proc produced " || image(f) ) @ debug
+                $endif # DEBUG
+                )
+        then {
+          if
+            push( stk, rproc( f, i, stk ) )
+          then
+            status[*LCtoken] := sccss
+          else
+            status[*LCtoken] := flr
+        }
+      )                                                                |
+      push( stk, \var[tok] )                                           |
+      if ( toktype == "string", tok[1] == "#" )
+        then tok # handle comment
+    } # end if \def
+  } # end repeat once for each token
+
+  $ifdef _ICON # Icon does not have the cofail function
+  if cofailure === stk[-1]
+    then pop(stk)
+  $else # Unicon has the cofail function
+  if \cofail
+    then {
+      if &current ~=== &main then cofail( source )
+      # if &current ~=== &main then &null @ source
+      if &current ~=== &main then cofail( &main )
+    }
+    else {
+      if &current ~=== &main then { 
+        # cofail is only defined for MT Icon and Unicon
+        # cofail( source )
+        # for now, transmit &null to source
+        @source
+        # fail the procedure if resumed
+        fail
+      }
+      if &current ~=== &main then {
+        # cofail is only defined for MT Icon and Unicon
+        # cofail( &main )
+        # for now, transmit &null to &main
+        @&main
+        # fail the procedure if resumed
+        fail
+      }
+    }
+  $endif # _POSIX
+end
+
+# implementation for "3[]:=" operator
+procedure elAssign( val, idx, L )
+  return ( L[idx] := val
+         , L 
+         )
+end
+
+procedure abort( LC )
+  while *LC > 1 do pop(LC)
+  return
+end
+
+procedure rpop( L )
+  local tmp
+  suspend tmp := pop(L)
+  push( L, tmp )
+end
+
+procedure rproc(
+  func, # function/procedure
+  narg, # number of arguments required by func
+  stk   # list; stack of arguments to rproc; first arg at top of stack
+)
+  local farg # list; stack of arguments to f
+  # ensure that there are enough arguments on the stack
+  if *stk < narg then fail
+  farg := [ ]
+  while narg > 0 do {
+    push( farg, pop(stk) )
+    narg -:= 1
+  }
+  every suspend func ! farg
+end
+
+procedure token( Cin )
+  # suspend tokens from co-expression that produces one line per resumption
+  # tokens are separated by whitespace or enclosed by double quotes
+  # if enclosed in quotes, quotes are retained in the tokens produced
+  # if enclosed in quotes, Icon string escapes are respected
+  local line, i, tok
+  static ws, nws
+  initial nws := &cset -- (cset( ws := '\t\n\v\l\f\r\b\d' ) ++ ' ')
+  tok := &null
+  while line := @Cin do line ? {
+    while not pos(0) do {
+      # gobble whitespace if not quoted string
+      if /tok then tab(upto(nws)) | break
+      # extract the next token 
+      if ( /tok, ="\"" ) # if not in quoted string & first char is dquote
+        then tok := "" # begin quoted string
+      else if /tok # if not in quoted string
+        then { # suspend through all non-whitespace characters, lcased
+          if tok := ="#" 
+            then {
+              tok ||:= tab(0)
+              if echo === write then suspend tok 
+            }
+            else {
+              tok := map( tab( many(nws) | 0 ) )
+              suspend tok
+            }
+          tok := &null
+        }
+      # remaining cases assume in quoted string
+      else if tok ||:= tab(upto('\\"')) # handle escapes and close quotes
+        then {
+          case move(1) | &null of {
+            "\\" : { # process backslash escape
+              move(-1)
+              tok ||:= escchar( escapeseq( ) ) | 2( move(1), move(1)|"\n" )
+            }
+            "\"" : { # process closed quote
+              suspend "\"" || tok || "\""
+              tok := &null
+              tab(many(ws))
+            }
+          }
+        }
+      else tok ||:= tab(0) # no close dquote on line
+    }
+    suspend "&cr"
+  }
+end
+
+# vim: ai ts=2 sw=2 et :
