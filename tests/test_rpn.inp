@@ -1,0 +1,25 @@
+"../rpn_core.rpn" import
+"test_rpn.rpn" import
+
+"words defined: " print words cr prints
+
+cr prints "running test1:" print test1
+cr prints "running test2:" print test2
+cr prints "running test3:" print test3
+cr prints "running test4:" print test4
+cr prints "running testaltconj:" print testaltconj
+cr prints "running testcase:" print testcase
+cr prints "running testcreate:" print testcreate
+cr prints "running testevery:" print testevery
+cr prints "running testif1a:" print testif1a
+cr prints "running testif1b:" print testif1b
+cr prints "running testif2a:" print testif2a
+cr prints "running testif2b:" print testif2b
+cr prints "running testif3:" print testif3
+cr prints "running testif3a:" print testif3a
+cr prints "running testif3b:" print testif3b
+cr prints "running testif3c:" print testif3c
+cr prints "running testif3d:" print testif3d
+cr prints "running teststore:" print teststore
+cr prints "running testuntil:" print testuntil
+cr prints "running testwhile:" print testwhile

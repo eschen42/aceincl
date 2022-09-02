@@ -6,7 +6,7 @@ procedure main( )
   local f
   #&trace := -1
   init_globals( )
-  f := open("test_rpn.stdin","r")
+  f := open("test_rpn.inp","r")
   hear := create ! f
   #interp( [ create token( hear ) ], [ ], "\nOK " )
   interp( [ create token( hear ) ], [ ], &null )
