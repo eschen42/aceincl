@@ -44,6 +44,10 @@
 
 $include "wora.icn"
 $include "fileDirIo.icn"
+$define USAGE  "usage: icon runt.icn [--continue] [--verbose] dir_names"
+$define USAGE1 "      --continue: run other tests after a test fails"
+$define USAGE2 "      --verbose: trace test results"
+$define USAGE3 "      --help - print this message"
 
 link popen  # for procedure popen
 
@@ -65,9 +69,12 @@ procedure main(args)
   local linObserved # observed line
   local testName    # name of test, test_*
   local traceout    # if !args == "--verbose" then write else 2
-  if !args == "--help" then {
-    write("usage: icon runt.icn [--continue] [--verbose] [<zero or more dirs>]")
-    exit(0)
+  if *args < 1 | !args == "--help" then {
+    write(USAGE)
+    write(USAGE1)
+    write(USAGE2)
+    write(USAGE3)
+    exit(if *args < 1 then 1 else 0)
   }
   traceout := if !args == "--verbose" then write else 2
   abort    := if !args == "--continue" then write_abort else stop
