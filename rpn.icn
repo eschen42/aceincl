@@ -92,7 +92,7 @@
 #
 # hints:
 # * See "Standard Words" and "Regression-test words" in tests.rpn for examples
-# * See Unicon\ipl\incl\invkdefs.icn for operators you can use
+# * See $IPL\incl\invkdefs.icn for operators you can use
 # * However, you generally must specify the number of arguments 
 #   before the operator or procedure name. For example,
 #   + Use "1-" to indicate the prefix minus
@@ -127,9 +127,59 @@ $else
 $endif
 
 $ifdef RPN_MAIN
-procedure main( )
+
+# From the invoking program that defines RPN_MAIN,
+#   include fileDirIo.icn for:
+#     procedure directory_seq(name) : s1, ...
+#       Produce name(s) that name a directory
+#     procedure path_separator() : s
+#       return platform-specific path separator
+# See tests/run_rpn for an example.
+
+procedure main(args)
+  local arg, d, f, home, dot_rpn
   init_globals( )
-  interp( [ create token( hear ) ], [ ], "\nOK " )
+$ifdef DEBUG
+  echo := write
+$endif
+  # import ~/.rpn/*.rpn if present
+  if home := getenv("HOME") then {
+    dot_rpn := home || path_separator() || ".rpn"
+    # open the directory to list the *.rpn files
+    if dot_rpn == directory_seq(dot_rpn)
+      then {
+        d := open(dot_rpn, "r")
+        every f := !d do {
+          f ?
+            if tab(find(".rpn")) & pos(-4)
+              then {
+                # import a .rpn file
+                f := dot_rpn || path_separator() || f
+                if f := open(f, "r")
+                  then {
+                    interp( [ create token( create ! f ) ], [ ], &null )
+                    close(f)
+                    }
+                }
+          }
+        close(d)
+        }
+    }
+  # If no arguments are present, take input from stdin
+  if *args = 0
+    then interp( [ create token( hear ) ], [ ], "\nOK " )
+    else every arg := !args do {
+      # Import any files provided as arguments.
+      # When one is named "-", switch to taking input from stdin. 
+      if arg == '-'
+        then interp( [ create token( hear ) ], [ ], "\nOK " )
+      else if f := open(arg, "r")
+        then {
+          interp( [ create token( create ! f ) ], [ ], &null )
+          close(f)
+          }
+        else stop(&progname, ": Cannot read file: ", arg)
+      }
 end
 $endif
 
@@ -444,13 +494,17 @@ procedure interp(
           &null # nothing to worry about ... yet
       }                                                                  |
       case tok of {
+        ###############################################################
         # special-case primitives
+        ###############################################################
         ":" : # begin word definition
           ( *stk>0, type(stk[1])=="string"
           , def := [ ( words[map(rpop(stk))] ) := [ ] ]
           )
-        # handlers for conditional code
 
+        ###############################################################
+        # handlers for conditional code
+        ###############################################################
         # regression-test: echo "tests.rpn" import testevery | rpn
         "&everyif" : # beginning of an every...do implicit secondary
           if *LCtoken < 2
@@ -587,7 +641,9 @@ procedure interp(
         "&endrepeat" : # end of a repeat...endrepeat implicit secondary
           LCtoken[1] := ^LCtoken[1] # refresh secondary's co-expression
 
+        ###############################################################
         # ordinary primitives
+        ###############################################################
         # TODO Decide out how to expose primitives so they can be 
         #      produced by "words".
         "&cr" :
@@ -836,7 +892,10 @@ procedure interp(
           if *stk=0
           then "var ( s -- ): empty stack" @ gripe
           else var[map(rpop(stk))]:=[ ]
+
+        ###############################################################
         # definition-only words
+        ###############################################################
         "if"        |
         "else"      |
         "endif"     |

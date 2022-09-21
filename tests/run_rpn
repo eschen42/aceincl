@@ -1,0 +1,6 @@
+#!/bin/env icon
+# run rpn.icn
+#$define DEBUG 1
+$define RPN_MAIN 1
+$include "../fileDirIo.icn"
+$include "../rpn.icn"
