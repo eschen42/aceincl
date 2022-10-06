@@ -1,4 +1,4 @@
-#!/bin/env icon
+#!/usr/bin/env icon
 # run rpn.icn
 #$define DEBUG 1
 $define RPN_MAIN 1

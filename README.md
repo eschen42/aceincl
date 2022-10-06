@@ -7,6 +7,38 @@ Incorporate these files into Icon programs using the `$include` preprocessor mac
 - This may be require less preparation and updating than would translating
   to "ucode" and using the `link` directive.
 
+## Contents
+
+- [Testing program `runt.icn` and working examples](#testing-program-runticn-and-working-examples)
+  - In the `tests` directory are "working examples" of how to use the files in this directory.
+  - The `runt.icn` runs the test programs to validate their output.
+
+- [`fieldedDataFile.icn`](#fieldeddatafileicn)
+  - Procedures to produce logical lines or fields from formatted data files.
+
+- [`fileDirIo.icn`](#filedirioicn)
+  - Procedures to manipulate files, directores, and their paths.
+
+- [`iimage.icn`](#iimageicn)
+  - Procedures to transform data structures into includable Icon declarations and statements.
+
+- [`LiComboP.icn`](#licombopicn)
+  - Procedures to suspend lists combining sequences.
+
+- [`RecTable.icn`](#rectableicn)
+  - Procedures to produce/manipulate record-like tables.
+
+- [`rpn.icn`](#rpnicn)
+  - Procedures to embed RPN-based (Forth-like) interpreter into Icon programs; can also be run in REPL.
+
+- [`selectRecordFromListByField.icn`](#selectrecordfromlistbyfieldicn)
+  - Procedure to produce records from a list of records (or a list of tables), matching specified criteria.
+
+- [`wora.icn`](#woraicn)
+  - Procedure to produce a value that can be read globally but can be reset only by the co-expression that set it it initially.
+
+- [Legacy Source Code Control](#legacy-source-code-control)
+
 ## Testing program `runt.icn` and working examples
 
 Working examples, named `test_*.icn`, are in the `tests` directory:
@@ -22,6 +54,7 @@ Working examples, named `test_*.icn`, are in the `tests` directory:
   - Use the `--continue` option to run all tests regardless of whether any fail.
   - Use the `--verbose` option to show both the expected output
     from the `.std` file and the actual output produced by the test program.
+
 
 ## fieldedDataFile.icn
 
@@ -74,6 +107,7 @@ Factory for a co-expression producing fields from a logical line of an INI file
 
 Parse an INI file at path `ini` into a table of tables
 
+
 ## fileDirIo.icn
 
 Procedures to manipulate files, directores, and their paths.
@@ -112,9 +146,10 @@ Return platform-specific path separator
 
 Return platform-specific path to the current directory
 
+
 ## iimage.icn
 
-Procedures to transform data structures into includable Icon declarations and statements
+Procedures to transform data structures into includable Icon declarations and statements.
 
 #### procedure `iimage(x)` : s
   - Produce Icon code to reproduce value `x`, if possible
@@ -122,38 +157,6 @@ Procedures to transform data structures into includable Icon declarations and st
   - Write Icon code to reproduce values in list `x` to `f` if it is a file;
     otherwise to `&errout` and `f` is discarded.
 
-## selectRecordFromListByField.icn
-
-Procedure to produce records from a list of records (or a list of tables), matching specified criteria.
-
-- This is currently NOT coded efficiently, so only use it on small lists or tables.
-- Also, at present, the co-expression is refreshed and (as an apparent consequence) leaks memory.
-- For a better way to do this, see [fix_selectRecordFromListByField.icn](https://sourceforge.net/p/unicon/mailman/attachment/CACb17F7MTimKsVuYS0LCmB6CpuE1pLvTZBtdCiNZRJEzFsFeKA%40mail.gmail.com/1/), which I will eventually apply here instead.
-  - Even so, there is yet the need to incorporate a "fuzzy binary search" to speed things up immensely for larger lists or tables.
-
-#### procedure `selectRecordFromListByField(Lfrom, sField, Ctest)` : R1, ...
-
-- Produce matching records (or tables) `X`
-  - from list `Lfrom` (`type(Lfrom[i]) == "record" | "table"`)
-  - where `X[sField] @ Ctest` succeeds
-
-#### procedure `selectRecordFromListByFieldL(Lfrom, sFieldL, Ctest)` : R1, ...
-
-- Produce matching records (or tables) `X`
-  - from list `Lfrom` (`type(Lfrom[i]) == "record" | "table"`)
-  - where this succeeds:<br />
-    `L := []; every put(L, X[!sFieldL]); L @ Ctest`
-
-## wora.icn
-
-Procedure to produce a value that can be read globally but can be reset only by the co-expression that set it it initially.
-
-#### procedure `wora(id,del)` : x (lvalue or rvalue)
-  - Set or read a globally visible read-only value,
-    - which is resettable by the C that creates it.
-  - `id` identifies the value; it is a key to a static table.
-  - `del` signifies that the value is to be deleted, but only when specified by the creator.
-    - Otherwise, this argument is ignored.
 
 ## LiComboP.icn
 
@@ -177,17 +180,6 @@ Procedures to suspend lists combining sequences.
 ## RecTable.icn
 
 Procedures to produce/manipulate record-like tables.
-
-### procedure `RecTableConstructorC(rec_name_s, rec_fields_L, rec_default_x)` : C
-
-Produce a C that, when receiving a transmitted list of values (of the
-same length as `rec_fields_L`), produces a RecTable instance:
-
-- `rec_name_s`    the "type" of the RecTable
-- `rec_fields_L`  a list of the field names
-- `rec_col_iL`    an optional list of column numbers to choose,
-                  defaults to all
-- `rec_default_x` default value for table members
 
 ### procedure `RecTable(rec_name_s, rec_fields_L, rec_data_L, rec_default_x)` : T
 
@@ -236,7 +228,7 @@ Return a list of the values produced by RecTableFieldVals(x).
 
 ### procedure `RecTableColTypeCheck(x, type_name, col_name, preamble)` : x
 
-Return x, except abort when x is not instance of type_name:
+Return x, except abort when x is not instance of `type_name`:
 
 - `x`        : value whose type is to be checked
 - `type_name`: expected string for RecTableType(x)
@@ -244,8 +236,128 @@ Return x, except abort when x is not instance of type_name:
 - `preamble` : initial string for error message; defaults value of name
              RecTablePreamble.
 
+### procedure `RecTableConstructorC(rec_name_s, rec_fields_L, rec_default_x)` : C
+
+Produce a C that, when receiving a transmitted list of values (of the
+same length as `rec_fields_L`), produces a RecTable instance:
+
+- `rec_name_s`    the "type" of the RecTable
+- `rec_fields_L`  a list of the field names
+- `rec_col_iL`    an optional list of column numbers to choose,
+                  defaults to all
+- `rec_default_x` default value for table members
+
+
+## rpn.icn
+
+Procedures to embed RPN-based (Forth-like) interpreter into Icon programs; can also be run in REPL.
+
+This file may be used to embed RPN-scripted access to Icon procedures
+and operators, in a manner reminiscent of Forth.
+- This needs full and user-friendly documentation, which deserves its own file.
+- Words may be composed from existing words.
+  - Words could be composed to conform to Forth standards...
+  - New word definitions replace former definitions.
+  - There is no `forget` yet.
+  - The colon in a definition goes *after* the string naming the new word, e.g.,
+    - `"hi" : "hello world" . cr ;`
+
+See the following to get started:
+- `tests/test_rpn.icn`
+- `tests/test_rpn.rpn`
+- `rpn_core.rpn`
+- `rpn.icn`
+
+This work was inspired by Steve Wampler's "A (small) RPN calculator" example
+[https://sourceforge.net/p/unicon/mailman/message/6144067/](
+https://web.archive.org/web/20211011204544/https://sourceforge.net/p/unicon/mailman/message/6144067/)
+and R. G. Loeliger's *Threaded interprtive languages* (1981, BYTE Books)
+[https://lccn.loc.gov/80019392](https://lccn.loc.gov/80019392).
+
+
+### run rpm.icn with REPL
+
+To run this "stand-alone" in a "read, evaluate, print, loop" (REPL),
+I put the following in `~/bin/rpn`:
+
+```
+LPATH=~/src/aceincl icon -P '
+#!/usr/bin/env icon
+# run rpn.icn
+
+# Define procedure main(args) that imports:
+#   - ~/.rpn/*.rpn
+#   - any .rpn files specified as arguments
+# and executes standard input if either:
+#   - *args = 0
+#   - "-" == !args
+$define RPN_MAIN 1
+$include "rpn.icn"
+
+# required by rpn.icn
+$include "fileDirIo.icn"
+'
+```
+
+then I made it executable:
+
+```bash
+chmod +x ~/bin/rpn
+```
+
+so that I can run it with:
+
+```bash
+~/bin/rpn
+```
+
+If you have rlwrap
+([https://github.com/hanslub42/rlwrap](https://github.com/hanslub42/rlwrap))
+installed (or built), and you change the first line above to
+```
+LPATH=~/src/aceincl rlwrap icon -P '
+```
+then you can get proper interpretation of the arrow keys in the REPL loop.
+
+## selectRecordFromListByField.icn
+
+Procedure to produce records from a list of records (or a list of tables), matching specified criteria.
+
+- This is currently NOT coded efficiently, so only use it on small lists or tables.
+- Also, at present, the co-expression is refreshed and (as an apparent consequence) leaks memory.
+- For a better way to do this, see [fix_selectRecordFromListByField.icn](https://sourceforge.net/p/unicon/mailman/attachment/CACb17F7MTimKsVuYS0LCmB6CpuE1pLvTZBtdCiNZRJEzFsFeKA%40mail.gmail.com/1/), which I will eventually apply here instead.
+  - Even so, there is yet the need to incorporate a "fuzzy binary search" to speed things up immensely for larger lists or tables.
+
+#### procedure `selectRecordFromListByField(Lfrom, sField, Ctest)` : R1, ...
+
+- Produce matching records (or tables) `X`
+  - from list `Lfrom` (`type(Lfrom[i]) == "record" | "table"`)
+  - where `X[sField] @ Ctest` succeeds
+
+#### procedure `selectRecordFromListByFieldL(Lfrom, sFieldL, Ctest)` : R1, ...
+
+- Produce matching records (or tables) `X`
+  - from list `Lfrom` (`type(Lfrom[i]) == "record" | "table"`)
+  - where this succeeds:<br />
+    `L := []; every put(L, X[!sFieldL]); L @ Ctest`
+
+## wora.icn
+
+Procedure to produce a value that can be read globally but can be reset only by the co-expression that set it it initially.
+
+#### procedure `wora(id,del)` : x (lvalue or rvalue)
+  - Set or read a globally visible read-only value,
+    - which is resettable by the C that creates it.
+  - `id` identifies the value; it is a key to a static table.
+  - `del` signifies that the value is to be deleted, but only when specified by the creator.
+    - Otherwise, this argument is ignored.
+
 
 <hr />
+
+## Legacy Source Code Control
+
+If you are still using Git rather than [the best thing since CVS](https://fossil-scm.org), then you may need the following to recover from the mess that Git Submodule can create if you are not *very* careful.
 
 ## Git Submodule - some practical reminders
 

@@ -37,12 +37,11 @@
 #
 ############################################################################
 #
-#   links: popen
-#   requried includes: fileDirIo.icn wora.icn
+#   links: popen, showtbl
+#   requried includes: fileDirIo.icn
 #
 ############################################################################
 
-$include "wora.icn"
 $include "fileDirIo.icn"
 $define USAGE  "usage: icon runt.icn [--continue] [--verbose] dir_names"
 $define USAGE1 "      --continue: run other tests after a test fails"
@@ -50,6 +49,7 @@ $define USAGE2 "      --verbose: trace test results"
 $define USAGE3 "      --help - print this message"
 
 link popen  # for procedure popen
+link showtbl # for procedure showtbl
 
 # flag that exit should produce error status even with --continue argument
 global failure
@@ -69,6 +69,8 @@ procedure main(args)
   local linObserved # observed line
   local testName    # name of test, test_*
   local traceout    # if !args == "--verbose" then write else 2
+  local timings     # for test-timing report
+  local totalTime   # for test-timing report
   if *args < 1 | !args == "--help" then {
     write(USAGE)
     write(USAGE1)
@@ -84,6 +86,9 @@ procedure main(args)
   if abort === stop
     then write( &errout, "To run all tests, invoke as:   icon "
               , &progname, " --continue")
+  # timing support
+  totalTime := -&time
+  timings := table(-1)
   # dirs either lists the directory arguments or the current directory
   dirs := []
   every put( dirs, directory_seq(!args) || "/" )
@@ -102,7 +107,7 @@ procedure main(args)
             filExpected := open( testName || ".std")
             # Report that we will run the test
           , write("\n", testName)
-          , testName := testName
+          , timings[testName] := -&time
             # Prepare to generate the observed result lines
           , filObserved := popen( "icon " || testName || ".icn", "r")
             # Create a sequence of expected result lines
@@ -133,10 +138,27 @@ procedure main(args)
                   then abort( " ... line ", linCount
                             , ": unexpected output: '", linObserved, "'"
                             )
+                  else timings[testName] +:= &time
           )
       }
       close(\dirListing)
     }
+  # from IPL procs showtbl.icn
+  showtbl(
+    "approx. runtimes, mS", #  1 title      heading title      ""
+    timings,                #  2 tbl        table to be shown  NO DEFAULT
+    ,                       #  3 sort_type  type of sorting    "ref"/"val"
+    ,                       #  4 limit      lines of output    infinite
+    ,                       #  5 sort_order increasing?        "incr"/"decr"
+    ,                       #  6 posit      first column       "val"/"ref"
+    40,                     #  7 w1         width of 1st col   10
+    ,                       #  8 w2         width of 2nd col   10
+    ,                       #  9 gutter     width between cols 3
+    right,                  # 10 f1         f justify 1st col  left
+    left,                   # 11 f2         f justify 2nd col  right
+    )
+  write("\nTotal testing time (milliseconds, with 10 mS resolution): ", totalTime +:= &time)
+
   # exit code zero unless falure was encountered when abort === write_abort
   exit( \failure | 0)
 end
