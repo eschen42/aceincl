@@ -155,6 +155,7 @@ $endif
               then {
                 # import a .rpn file
                 f := dot_rpn || path_separator() || f
+                write(&errout, "rpn init: importing ", f)
                 if f := open(f, "r")
                   then {
                     interp( [ create token( create ! f ) ], [ ], &null )

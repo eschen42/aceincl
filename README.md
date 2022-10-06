@@ -282,7 +282,6 @@ I put the following in `~/bin/rpn`:
 
 ```
 LPATH=~/src/aceincl icon -P '
-#!/usr/bin/env icon
 # run rpn.icn
 
 # Define procedure main(args) that imports:
