@@ -17,21 +17,21 @@
 #
 ############################################################################
 #
-#   procedure RecTableConstructorC(rec_name_s, rec_fields_L, rec_default_x) : C
-#     Produce a C that, when receiving a transmitted list of values (of the
-#     same length as rec_fields_L), produces a RecTable instance:
-#     - rec_name_s:    the "type" of the RecTable
-#     - rec_fields_L:  a list of the field names
-#     - rec_col_iL:    an optional list of column numbers to choose,
-#                      defaults to all
-#     - rec_default_x: default value for table members
-#
-#   procedure RecTable(rec_name_s, rec_fields_L, rec_data_L, rec_default_x) : T
+#   procedure RecTable(rec_name_s, rec_fields_L, rec_data_L, rec_col_iL, rec_default_x) : T
 #     Produce a table with record-like aspects:
 #     - rec_name_s:    the "type" of the RecTable
 #     - rec_fields_L:  a list of the field names
 #     - rec_data_L:    an optional list of values to assign to the fields
 #     - rec_col_iL:    an optional list of column numbers to choose
+#                      defaults to all
+#     - rec_default_x: default value for table members
+#
+#   procedure RecTableConstructorC(rec_name_s, rec_fields_L, rec_col_iL, rec_default_x) : C
+#     Produce a C that, when receiving a transmitted list of values (of the
+#     same length as rec_fields_L), produces a RecTable instance:
+#     - rec_name_s:    the "type" of the RecTable
+#     - rec_fields_L:  a list of the field names
+#     - rec_col_iL:    an optional list of column numbers to choose,
 #                      defaults to all
 #     - rec_default_x: default value for table members
 #
@@ -43,6 +43,18 @@
 #     Produce RecTable's fields, or (likely) default value for non-RecTable:
 #     - The default value will be produced for non-RecTable except when the
 #       key that is the table itself has been assigned another value.
+#
+#   procedure RecTableFieldVals(x) : x1, ...
+#     Produce RecTable's field-values, or fail for non-RecTable:
+#
+#   procedure RecTableFieldsL(x)
+#     Return list of RecTable's fields, or empty list for non-RecTable:
+#
+#   procedure RecTableFieldVals(x)
+#     Produce RecTable's field-values, or fail for non-RecTable:
+#
+#   procedure RecTableFieldValsL(x)
+#     Return list of RecTable's field-values, or empty list for non-RecTable:
 #
 #   procedure RecTableColTypeCheck(x, type_name, col_name, preamble) : x
 #     Return x, except abort when x is not instance of type_name
@@ -59,28 +71,6 @@ $define _RecTable_
 $ifndef RecTablePreamble
 $define RecTablePreamble "\n  File " || &file || "; Line " || &line || ":\n  Bad Argument ==> "
 $endif # RecTablePreamble
-
-procedure RecTableConstructorC(rec_name_s, rec_fields_L, rec_col_iL, rec_default_x) #: C producing RecTable instances
-  # Produce a C that, when receiving a transmitted list of values (of the
-  # same length as rec_fields_L), produces a RecTable instance:
-  # - rec_name_s:    the "type" of the RecTable
-  # - rec_fields_L:  a list of the field names
-  # - rec_col_iL:    an optional list of column numbers to choose, defaults to all
-  # - rec_default_x: default value for table members
-  local fields_L, T, C
-  RecTableColTypeCheck(rec_name_s, "string", "rec_name_s")
-  RecTableColTypeCheck(rec_fields_L, "list", "rec_fields_L")
-  fields_L := copy(rec_fields_L)
-  C := create
-         repeat T := RecTable( rec_name_s
-                             , fields_L
-                             , T @ &source
-                             , rec_col_iL
-                             , rec_default_x
-                             )
-  @C
-  return C
-end
 
 procedure RecTable( rec_name_s, rec_fields_L, rec_data_L, rec_col_iL, rec_default_x ) #: produce a table with record-like properties
   # - rec_name_s:    the "type" of the RecTable
@@ -127,6 +117,18 @@ procedure RecTableType(x) #: For RecTable, produce name and fields.
   suspend !(\x[x])
 end
 
+procedure RecTableFields(x) #: Produce RecTable's fields, or fail for non-RecTable:
+  local L
+  L := RecTableFieldsL(x)
+  suspend ! L
+end
+
+procedure RecTableFieldVals(x) #: Produce RecTable's field-values, or fail for non-RecTable:
+  local L
+  L := RecTableFieldValsL(x)
+  suspend ! L
+end
+
 procedure RecTableFieldsL(x) #: Return list of RecTable's fields, or empty list for non-RecTable:
   # - An empty list will be produced for non-RecTable.
   local fldL
@@ -142,12 +144,6 @@ procedure RecTableFieldsL(x) #: Return list of RecTable's fields, or empty list 
     } # else "fail off end of procedure"
 end
 
-procedure RecTableFields(x) #: Produce RecTable's fields, or fail for non-RecTable:
-  local L
-  L := RecTableFieldsL(x)
-  suspend ! L
-end
-
 procedure RecTableFieldValsL(x) #: Return list of RecTable's field-values, or empty list for non-RecTable:
   local valL
   if type(x) ~== "table"
@@ -158,12 +154,6 @@ procedure RecTableFieldValsL(x) #: Return list of RecTable's field-values, or em
       every put( valL, x[!RecTableFieldsL(x)] )
       return valL
     } # else "fail off end of procedure"
-end
-
-procedure RecTableFieldVals(x) #: Produce RecTable's field-values, or fail for non-RecTable:
-  local L
-  L := RecTableFieldValsL(x)
-  suspend ! L
 end
 
 procedure RecTableColTypeCheck(x, type_name, col_name, preamble) #: abort on type mismatch
@@ -205,6 +195,28 @@ procedure RecTableColTypeCheck(x, type_name, col_name, preamble) #: abort on typ
                 )
          , runerr(errno, x)
          ) | x
+end
+
+procedure RecTableConstructorC(rec_name_s, rec_fields_L, rec_col_iL, rec_default_x) #: C producing RecTable instances
+  # Produce a C that, when receiving a transmitted list of values (of the
+  # same length as rec_fields_L), produces a RecTable instance:
+  # - rec_name_s:    the "type" of the RecTable
+  # - rec_fields_L:  a list of the field names
+  # - rec_col_iL:    an optional list of column numbers to choose, defaults to all
+  # - rec_default_x: default value for table members
+  local fields_L, T, C
+  RecTableColTypeCheck(rec_name_s, "string", "rec_name_s")
+  RecTableColTypeCheck(rec_fields_L, "list", "rec_fields_L")
+  fields_L := copy(rec_fields_L)
+  C := create repeat T :=
+      RecTable( rec_name_s
+              , fields_L
+              , T @ &source
+              , rec_col_iL
+              , rec_default_x
+              )
+  @C
+  return C
 end
 
 $endif # _RecTable_
