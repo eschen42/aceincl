@@ -356,6 +356,7 @@ procedure `welford_add(W, x)`
   - `x` the next value to add to the record
 
 procedure `welford_get(welford_running)`
+
 - produce `welford_cumulative` record summarizing normal statistics
 - for the series of x provided to `welford_add`
     - `welford_running` a `welford_running` record updated by `welford_add`
