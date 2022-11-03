@@ -7,6 +7,10 @@ Incorporate these files into Icon programs using the `$include` preprocessor mac
 - This may be require less preparation and updating than would translating
   to "ucode" and using the `link` directive.
 
+development repo: [https://chiselapp.com/user/eschen42/repository/aceincl](https://chiselapp.com/user/eschen42/repository/aceincl)
+
+mirror and release repo: [https://github.com/eschen42/aceincl](https://github.com/eschen42/aceincl)
+
 ## Contents
 
 - [Testing program `runt.icn` and working examples](#testing-program-runticn-and-working-examples)
@@ -31,8 +35,15 @@ Incorporate these files into Icon programs using the `$include` preprocessor mac
 - [`rpn.icn`](#rpnicn)
   - Procedures to embed RPN-based (Forth-like) interpreter into Icon programs; can also be run in REPL.
 
+- [`runningStats.icn`](#runningstatsicn)
+  - Support computing summary statistics for normally distributed data using "Welford's online algorithm".
+
 - [`selectRecordFromListByField.icn`](#selectrecordfromlistbyfieldicn)
   - Procedure to produce records from a list of records (or a list of tables), matching specified criteria.
+
+- [`vnom.icn`](#vnomicn)
+  - "Nominal vector", i.e., a list whose elements may be accessed by rank (index) or name (key).
+  - This construct is supported by a Lua-inspired metatable.
 
 - [`wora.icn`](#woraicn)
   - Procedure to produce a value that can be read globally but can be reset only by the co-expression that set it it initially.
@@ -318,6 +329,37 @@ LPATH=~/src/aceincl rlwrap icon -P '
 ```
 then you can get proper interpretation of the arrow keys in the REPL loop.
 
+## runningStats.icn
+
+These procedures support computing summary statistics for normally
+distributed data using "Welford's online algorithm", porting code
+from Wikipedia.
+
+ref: [https://en.wikipedia.org/wiki/Algorithms\_for\_calculating\_variance#Welford's\_online\_algorithm](https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford%27s_online_algorithm)
+
+record `welford_running(count, mean, M2)`
+
+- record accumulating online results without persisting raw data
+
+record `welford_cumulative(n, mean, variance, sampleVariance, SD, SE)`
+
+- record of statistical results extracted from `welford_running`
+
+procedure `welford_new()`
+
+- produce an initialized `welford_running` record
+
+procedure `welford_add(W, x)`
+
+- produce an updated `welford_running` record
+  - `W` a `welford_running` record
+  - `x` the next value to add to the record
+
+procedure `welford_get(welford_running)`
+- produce `welford_cumulative` record summarizing normal statistics
+- for the series of x provided to `welford_add`
+    - `welford_running` a `welford_running` record updated by `welford_add`
+
 ## selectRecordFromListByField.icn
 
 Procedure to produce records from a list of records (or a list of tables), matching specified criteria.
@@ -340,6 +382,61 @@ Procedure to produce records from a list of records (or a list of tables), match
   - where this succeeds:<br />
     `L := []; every put(L, X[!sFieldL]); L @ Ctest`
 
+## vnom.icn
+
+"Nominal vector", i.e., a list whose elements may be accessed by rank (index) or name (key).
+
+A use case for this construct might a dynamically-defined record
+(i.e., an ordered list of key-value pairs),
+such as might be used to represent a row returned by an SQL query.
+
+Through use of a Lua-inspired "metatable", operations on this structure
+may be defined or extended with a few message-handler-extension functions.
+Note that a metatable may be shared among several VNom instances to give
+them identical behavior; for this reason, the copy constructor copies
+a reference to the metatable rather than making a copy of the metatable.
+Thus, behavior of the set of instances may (even dynamically) be modified
+by changing a single structure.
+
+#### procedure `vnew(Original:T, Type:s, ID:s, Metatable:T, Disposable:s, Kind:s) : V`
+
+Construct a new VNom instance.
+
+  - `Original:T`
+    - `&null` | `table` | `VNom`
+  - `Type:s`
+    - Type property
+  - `ID:s`
+    - ID property
+  - `Metatable:T`
+    - table mapping message strings to message-handler procedures
+    - By design, when `Original` is another VNom, `vnew` copies a reference
+      to the metatable rather than the metatable itself.
+  - `Disposable:n?`
+    - if not null, set Disposable property to "yes"
+  - `Kind:s`
+    - Kind property
+
+#### procedure `vmsg(VNom:V, Message:s, args[]) : x`
+
+Send messages to update or interrogate the VNom instance.
+
+  - `vmsg(V, "!"                 ) : x1, ...  # generate values in order keys in L`
+  - `vmsg(V, "*"                 ) : i        # produce number of values          `
+  - `vmsg(V, "get" | "pop"       ) : x        # pop value, discarding key         `
+  - `vmsg(V, "pull"              ) : x        # pull value, discarding key        `
+  - `vmsg(V, "push",       x1, x2) : V        # push value with key               `
+  - `vmsg(V, "put",        x1, x2) : V        # put value with key                `
+  - `vmsg(V, "key"               ) : x1, ...  # generate keys in order keys in L  `
+  - `vmsg(V, "keylist"           ) : L        # copy of L of ranked keys          `
+  - `vmsg(V, "bykey",      x     ) : s        # value, assignable by key          `
+  - `vmsg(V, "byrank",     i     ) : s        # value, assignable by rank (index) `
+  - `vmsg(V, "kind"              ) : s        # Kind property, assignable         `
+  - `vmsg(V, "id"                ) : s        # ID property, assignable           `
+  - `vmsg(V, "type"              ) : s        # Type property, assignable         `
+  - `vmsg(V, "image"             ) : s        # image property                    `
+  - `vmsg(V, "metatable"         ) : s        # Metatable, assignable             `
+                                      `
 ## wora.icn
 
 Procedure to produce a value that can be read globally but can be reset only by the co-expression that set it it initially.

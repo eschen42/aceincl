@@ -1,0 +1,7 @@
+R_welford_cumulative_1 := welford_cumulative()
+   R_welford_cumulative_1.n := 8.0
+   R_welford_cumulative_1.mean := 5.0
+   R_welford_cumulative_1.variance := 4.0
+   R_welford_cumulative_1.sampleVariance := 4.571428571
+   R_welford_cumulative_1.SD := 2.138089935
+   R_welford_cumulative_1.SE := 0.755928946

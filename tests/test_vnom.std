@@ -1,0 +1,50 @@
+metatable["keylist"] := procedure VNomMesg
+metatable["metatable"] := procedure VNomMesg
+metatable["bykey"] := procedure VNomMesg
+metatable["*"] := procedure VNomMesg
+metatable["put"] := procedure VNomMesg
+metatable["image"] := procedure VNomMesg
+metatable["!"] := procedure VNomMesg
+metatable["kind"] := procedure VNomMesg
+metatable["type"] := procedure VNomMesg
+metatable["id"] := procedure VNomMesg
+metatable["copy"] := procedure VNomMesg
+metatable["push"] := procedure VNomMesg
+metatable["byrank"] := procedure VNomMesg
+metatable["pop"] := procedure VNomMesg
+metatable["key"] := procedure VNomMesg
+metatable["pull"] := procedure VNomMesg
+metatable["get"] := procedure VNomMesg
+hello --> world
+1 --> bye bye
+hola --> mundo
+keylist --> list of 3
+byrank 1: world
+bykey 1: bye bye
+There are 3 values in V
+pull(V) mundo
+There are 2 values in V
+intersecting key: "hello"
+intersecting key: 1
+pop(V) bye bye
+There are 1 values in V
+
+Principal properties of V
+kind: vkind
+type: vtype
+id: vtype_1
+image: vtype_1(1)
+
+Principal properties of Vcopy
+kind: vkind
+type: vtype
+id: vtype_4
+image: vtype_4(3)
+
+get(V) world
+There are 0 values in V
+There are 3 values in Vcopy
+
+foo --> bar
+magic --> 1
+2 --> marker

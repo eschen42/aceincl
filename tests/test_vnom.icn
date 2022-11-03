@@ -1,0 +1,88 @@
+# This tests ../vnom.icn
+# See ./test_vnom.std for expected output
+
+# $define VNOM_MAIN_CODEOBJ
+# $define VNOM_MAIN_XCODE
+# $define VNOM_MAIN_XIMAGE
+
+$include "../vnom.icn"
+
+$ifdef VNOM_MAIN_XIMAGE
+  link ximage
+$endif
+$ifdef VNOM_MAIN_CODEOBJ
+  link codeobj
+$endif
+$ifdef VNOM_MAIN_XCODE
+  link xcode
+$endif
+
+procedure main()
+  local V, k, v, Vcopy
+
+  # VNomCtor(Original, Type, ID, Metatable, Disposable, Kind)
+  V := vnew(, "vtype", , , , "vkind")
+  k := vmsg(V, "metatable")
+  $ifdef VNOM_MAIN_XIMAGE
+    write("ximage(k):\n", ximage(k))
+  $endif
+  every v := key(k) do write("metatable[\"", v, "\"] := ", image(k[v]))
+  vmsg(V, "push", 1, "bye bye")
+  vmsg(V, "put", "hola", "mundo")
+  vmsg(V, "push", "hello", "world")
+  $ifdef VNOM_MAIN_XIMAGE
+    write("ximage(V):\n", ximage(V))
+  $endif
+  Vcopy := vmsg(V, "copy")
+  $ifdef VNOM_MAIN_XIMAGE
+    write("ximage(Vcopy):\n", ximage(Vcopy))
+  $endif
+  $ifdef VNOM_MAIN_CODEOBJ
+    write(encode(V))
+  $endif
+  $ifdef VNOM_MAIN_CODEOBJ
+    write(encode(Vcopy))
+  $endif
+  v := create write(" --> ", vmsg(V, "!"))
+  k := create writes(vmsg(V, "key"))
+  while @k do @v
+  $ifdef VNOM_MAIN_XIMAGE
+    write(ximage(vmsg(V, "keylist")))
+  $else
+    v := vmsg(V, "keylist")
+    write("keylist --> ", (image(v) ? tab(upto('_'))), " of ", *v)
+  $endif
+  write("byrank 1: ", vmsg(V, "byrank", 1))
+  write("bykey 1: " , vmsg(V, "bykey" , 1))
+  $ifdef VNOM_MAIN_XCODE
+    xencode(V)
+  $endif
+  write("There are ", vmsg(V, "*"), " values in V")
+  write("pull(V) ", vmsg(V, "pull"))
+  $ifdef VNOM_MAIN_XIMAGE
+    write("ximage(V):\n", ximage(V))
+  $endif
+  write("There are ", vmsg(V, "*"), " values in V")
+  every write("intersecting key: ", image(vmsg(V, "key")) == image(vmsg(Vcopy, "key")))
+  write("pop(V) ", vmsg(V, "pop"))
+  write("There are ", vmsg(V, "*"), " values in V")
+  $ifdef VNOM_MAIN_XIMAGE
+    write("ximage(Vcopy):\n", ximage(Vcopy))
+  $endif
+  v := ["kind", "type", "id", "image"]
+  write("\nPrincipal properties of V")
+  every k := !v do write(k, ": ", vmsg(V    , k))
+  write("\nPrincipal properties of Vcopy")
+  every k := !v do write(k, ": ", vmsg(Vcopy, k))
+  write("\nget(V) ", vmsg(V, "get"))
+  write("There are ", vmsg(V, "*"), " values in V")
+  write("There are ", vmsg(Vcopy, "*"), " values in Vcopy\n")
+  v := table()
+  v["magic"]:= 1
+  v[2]:= "marker"
+  V := vnew(v)
+  vmsg(V, "push", "foo", "bar")
+  v := create write(" --> ", vmsg(V, "!"))
+  k := create writes(vmsg(V, "key"))
+  while @k do @v
+end

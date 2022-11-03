@@ -1,0 +1,91 @@
+############################################################################
+#
+#   File:     runningStats.icn
+#
+#   Subject:  online computation of summary statistics
+#
+#   Author:   Arthur C. Eschenlauer
+#
+#   Date:     October 4, 2022
+#
+############################################################################
+#
+#   This file is in the public domain.
+#
+#   SPDX-License-Identifier: CC-PDDC
+#     https://spdx.org/licenses/CC-PDDC.html
+#
+############################################################################
+#
+# These procedures support computing summary statistics for normally
+# distributed data using "Welford's online algorithm", porting code
+# from Wikipedia.
+#
+# ref: https://en.wikipedia.org/wiki/_
+#        Algorithms_for_calculating_variance_
+#        #Welford's_online_algorithm
+#
+# record welford_running(count, mean, M2)
+#   record accumulating online results without persisting raw data
+#
+# record welford_cumulative(n, mean, variance, sampleVariance, SD, SE)
+#   record of statistical results extracted from welford_running
+# 
+# procedure welford_new()
+#   produce an initialized welford_running record
+# 
+# procedure welford_add(W, x)
+#   produce an updated welford_running record
+#     - W a welford_running record
+#     - x the next value to add to the record
+# 
+# procedure welford_get(welford_running)
+#   produce welford_cumulative record summarizing normal statistics
+#   for the series of x provided to welford_add
+#     - welford_running a welford_running record updated by welford_add
+#   
+############################################################################
+#
+#   links: (none)
+#   requried includes: (none)
+#
+############################################################################
+
+record welford_running(count, mean, M2)
+
+record welford_cumulative(n, mean, variance, sampleVariance, SD, SE)
+
+procedure welford_new()
+  return welford_running(0, 0, 0)
+end
+
+procedure welford_add(W,x) # running normal statistics
+  local delta, delta2
+  W.count +:= 1.0 # force real division
+  delta := x - W.mean
+  W.mean +:= delta / W.count
+  delta2 := x - W.mean
+  W.M2 +:= delta * delta2
+  return W
+end
+
+procedure welford_get(welford_running) # convert normal statistics
+  local M2, n, mean, variance, sampleVariance, SD, SE
+  n := welford_running.count
+  mean := welford_running.mean
+  M2 := welford_running.M2
+  variance := 
+    if n > 0
+      then M2 / n
+      else 0
+  sampleVariance :=
+    if n > 1
+      then M2 / (n - 1)
+      else 0
+  SD := sqrt(sampleVariance)
+  SE :=
+    if n > 0
+      then SD / sqrt(n)
+      else SD
+  return welford_cumulative(n, mean, variance, sampleVariance, SD, SE) 
+end

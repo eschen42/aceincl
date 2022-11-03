@@ -1,0 +1,361 @@
+############################################################################
+#
+# File: vnom.icn
+#
+# Subject: vnom.icn - a named vector with Lua-style metatable access
+#
+# Author: Arthur Eschenlauer (https://orcid.org/0000-0002-2882-0508)
+#
+# Date: 1 November 2022
+#
+# URL: https://chiselapp.com/user/eschen42/repository/aceincl/file?name=vnom.icn
+#
+############################################################################
+#
+# This file is in the public domain. Art Eschenlauer has waived all
+# copyright and related or neighboring rights to:
+#   vnom.icn - a named vector with Lua-style metatable access
+# For details, see:
+#   https://creativecommons.org/publicdomain/zero/1.0/
+#
+# If you require a specific license and public domain status is not suffi-
+# cient for your needs, please substitute the MIT license (see below), bearing
+# in mind that the copyright "claim" is solely to meet your requirements
+# and does not imply any restriction on use or copying by the author:
+#
+#   Copyright (c) 2022, Arthur Eschenlauer
+#
+#   Permission is hereby granted, free of charge, to any person obtaining
+#   a copy of this software and associated documentation files (the
+#   "Software"), to deal in the Software without restriction, including
+#   without limitation the rights to use, copy, modify, merge, publish,
+#   distribute, sublicense, and/or sell copies of the Software, and to
+#   permit persons to whom the Software is furnished to do so, subject
+#   to the following conditions:
+#
+#   The above copyright notice and this permission notice shall be
+#   included in all copies or substantial portions of the Software.
+#
+#   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+#   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+#   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
+#   IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+#   CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+#   TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+#   SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+#
+############################################################################
+#
+# A VNom is a "Nominal Vector", a list with named cells.
+# The type-letter "V" is used in the overview below to represent this type.
+# Elements are apparently stored in a monotonic order, accessible by key.
+# However, to accommodate insertions and deletions predictably, this is
+# implemented as an "indirect list" of keys for a table whose values
+# are the stored values. Keys and values are any Icon type.
+#
+# A use case for this construct might a dynamically-defined record
+# (i.e., an ordered list of key-value pairs), such as might be used to
+# represent a row returned by an SQL query.
+# 
+# Through use of a Lua-inspired "metatable", operations on this structure
+# may be defined or extended with a few message-handler-extension functions.
+# Note that a metatable may be shared among several VNom instances to give
+# them identical behavior; for this reason, the copy constructor copies
+# a reference to the metatable rather than making a copy of the metatable.
+# Thus, behavior of the set of instances may (even dynamically) be modified
+# by changing a single structure.
+#
+# Schematic Overview:
+#
+#   State
+#     - L of keys of table T
+#     - value of T is indirectly specified by the corresponding index of L
+#
+#   Operations (messages passed to message handler)
+#     vmsg(V, "!"                 ) : x1, ...  # generate values
+#                                              #  in order keys in L
+#     vmsg(V, "*"                 ) : i  # produce number of values
+#
+#     vmsg(V, "get" | "pop"       ) : x  # pop value, discarding key
+#     vmsg(V, "pull"              ) : x  # pull value, discarding key
+#     vmsg(V, "push",       x1, x2) : V  # push value with key
+#     vmsg(V, "put",        x1, x2) : V  # put value with key
+#     vmsg(V, "key"               ) : x1, ...  # generate keys
+#                                              #   in order keys in L
+#     vmsg(V, "keylist"           ) : L  # copy of L of ranked keys
+#     vmsg(V, "bykey",      x     ) : s  # value, assignable by key
+#     vmsg(V, "byrank",     i     ) : s  # value, assignable by rank
+#
+#     vmsg(V, "kind"              ) : s  # Kind property, assignable
+#     vmsg(V, "id"                ) : s  # ID property, assignable
+#     vmsg(V, "type"              ) : s  # Type property, assignable
+#     vmsg(V, "image"             ) : s  # image property
+#     vmsg(V, "metatable"         ) : s  # Metatable, assignable
+#
+#   Constructor
+#     vnew(Original:T, Type:s, ID:s, Metatable:T, Disposable:s, Kind:s):V
+#       Construct a new VNom instance.
+#         - Original:T
+#             if not null, a plain table, or another VNom (or extension
+#             of VNom), making this a "copy-constructor"
+#         - Type:s
+#             Type property, if null then Type of \Original; default is
+#             Kind || typecount
+#         - ID:s
+#             ID property, defaults to VNom_n, where n the table counter
+#         - Metatable:T
+#             table mapping message strings to message-handler procedures
+#         - Disposable:n?
+#             Disposable property, if not null, a disposable property is
+#             added and set to "yes", to be switched to "done" if the
+#             VNom has been disposed
+#         - Kind:s
+#             Kind property, defaults to "VNom"
+#
+############################################################################
+#
+# For example:
+#
+#   icon -P '
+#   link ximage
+#   $include "vnom.icn"
+#   # vnew and vmsg are $defined in vnom.icn as:
+#   #   $define vnew VNomCtor
+#   #   $define vmsg VNomMesg
+#   procedure main()
+#     local V
+#     V := vnew(, "vtype", , , , "vkind")
+#     vmsg(V, "push", 1, "bye bye")
+#     vmsg(V, "put", "hola", "mundo")
+#     vmsg(V, "push", "hello", "world")
+#     write(ximage(V))
+#   end
+#   '
+#
+# produces this output:
+#
+#   T1 := table(&null)
+#      T1[1] := "bye bye"
+#      T1["hello"] := "world"
+#      T1["hola"] := "mundo"
+#      T1[T1] := T2 := table(&null)
+#         T2["Dspsbl"] := &null
+#         T2["ID"] := "vtype_1"
+#         T2["Kind"] := "vkind"
+#         T2["Mttbl"] := T3 := table(&null)
+#            T3["!"] := procedure VNomMesg
+#            T3["*"] := procedure VNomMesg
+#            T3["bykey"] := procedure VNomMesg
+#            T3["byrank"] := procedure VNomMesg
+#            T3["copy"] := procedure VNomMesg
+#            T3["get"] := procedure VNomMesg
+#            T3["id"] := procedure VNomMesg
+#            T3["image"] := procedure VNomMesg
+#            T3["key"] := procedure VNomMesg
+#            T3["keylist"] := procedure VNomMesg
+#            T3["kind"] := procedure VNomMesg
+#            T3["metatable"] := procedure VNomMesg
+#            T3["pop"] := procedure VNomMesg
+#            T3["pull"] := procedure VNomMesg
+#            T3["push"] := procedure VNomMesg
+#            T3["put"] := procedure VNomMesg
+#            T3["type"] := procedure VNomMesg
+#         T2["State"] := L1 := list(3)
+#            L1[1] := "hello"
+#            L1[2] := 1
+#            L1[3] := "hola"
+#         T2["Type"] := "vtype"
+#
+############################################################################
+#
+# Requires: preprocessor
+#
+############################################################################
+#
+# Links: none
+#
+############################################################################
+
+# vnom.icn - a named vector with Lua-style metatable access
+
+$ifndef vnew
+$define vnew VNomCtor
+$endif
+
+$ifndef vmsg
+$define vmsg VNomMesg
+$endif
+
+# VNomCtor - a VNom constructor
+procedure VNomCtor(Original, Type, ID, Metatable, Disposable, Kind)
+  local V, MT, L, OrigProps
+  static typecount
+  initial typecount := 0
+  if \Original
+    then OrigProps := Original[key(Original) === Original]
+  # allocate the the external "VNom" reference
+  V              := copy(\Original) | table()
+  delete(V, \Original)
+  # allocate internal table for properties
+  V[V]           := table()
+
+  # set properties
+
+  # Dspsbl is &null | "yes" | "done"
+  V[V, "Dspsbl"] := /Disposable |
+                   "yes"
+  # in case someone chooses to extend VNom
+  V[V, "Kind"]   := \Kind |
+                    Original[\Original, key(\OrigProps) == "Kind"] |
+                    "VNom"
+  # emulate Lua metatables, i.e.:
+  #   https://www.lua.org/manual/5.4/manual.html#2.4
+  V[V, "Mttbl"]  :=
+    MT           := \Metatable |
+                    Original[\Original, key(\OrigProps) == "Mttbl"] |
+                    table()
+  # allocate a list to hold the values
+  V[V, "State"]  := if key(\OrigProps) == "State"
+                    then
+                      copy(Original[\Original, "State"])
+                    else {
+                      L := list()
+                      every put(L, key(\Original))
+                      L
+                      }
+  # default Type is VNom_n where n is typecount
+  V[V, "Type"]   := \Type |
+                    Original[\Original, key(\OrigProps) == "Type"] |
+                    (V[V, "Kind"] || (typecount +:= 1))
+  # default ID is Kind || "_n" where n is typecount
+  V[V, "ID"]     := \ID |
+                    V[V, "Type"] || (image(V) ? (="table",tab(upto('('))))
+
+  # declare handler for each message
+
+  # messages having 0 args
+  MT["!"]        := VNomMesg
+  MT["*"]        := VNomMesg
+  MT["copy"]     := VNomMesg
+  MT["get"]      := VNomMesg
+  MT["key"]      := VNomMesg
+  MT["keylist"]  := VNomMesg
+  MT["pop"]      := VNomMesg
+  MT["pull"]     := VNomMesg
+
+  MT["id"]       := VNomMesg
+  MT["image"]    := VNomMesg
+  MT["kind"]     := VNomMesg
+  MT["type"]     := VNomMesg
+
+  # messages having 1 arg
+  MT["bykey"]    := VNomMesg
+  MT["byrank"]   := VNomMesg
+  MT["metatable"]:= VNomMesg
+
+  # messages having 2 args
+  MT["push"]     := VNomMesg
+  MT["put"]      := VNomMesg
+
+  return V
+end
+
+# VNomMesg - a VNom message handler
+procedure VNomMesg(args[])
+  local V, message, idx                   # args[1:3]
+  local state                             # list of keys of V
+  local properties                        # map property name:s to X
+  local metamethod                        # possibly override this proc.
+  local val                               # pulled or popped val
+  local nargs                             # "excess" args beyond first two
+  if *args < 2 then stop("*args < 2")     # need at least V and message
+  nargs := *args - 2                      # count of args beyond V and msg
+  V := args[1]                            # extract VNom from args
+  message := args[2]                      # extract message from args
+  metamethod := V[V, "Mttbl", message]    # extract metamethod from VNom
+  suspend if (\metamethod ~=== VNomMesg)  # Is this proc the impl. of msg.?
+    then metamethod ! args                #   if not, invoke implementation
+    else {                                #   else, this proc. handles msg.
+      properties := V[V]                  # retrieve properties T from V
+      state := properties["State"]        # retrieve state L from props. T
+      case nargs of {
+        2 : case message of {              # message handlers taking 2 args
+          "push" : {                     # "push" message handler
+            if (idx := args[3]) === !state # make sure key is not in state
+              then fail                    #   when so, disallow message
+            push(state, idx)               # add idx to left end of state L
+            V[idx] := args[4]              # add idx and value to V
+            V                              # produce V
+            }
+          "put" : {                      # "put" message handler
+            if (idx := args[3]) === !state # make sure key is not in state
+              then fail                    #   when so, disallow message
+            put(state, idx)                # add idx to right end of state L
+            V[idx] := args[4]              # add idx and value to V
+            V                              # produce V
+            }
+          default : fail
+          }
+        1 : case message of {              # message handlers taking 0 args
+          "bykey" : {                    # "bykey" message handler
+            V[args[3]]                     # produce L-value for key in V
+            }
+          "byrank" : {                   # "byrank" message handler
+            V[state[args[3]]]              # produce L-value for rank in L
+            }
+          default : fail
+          }
+        0 : case message of {              # message handlers taking 0 args
+          "!" : {                        # "!" message handler
+            V[!state]                      # generate values,
+            }                              #   ordered by state L
+          "*" : {                        # "*" message handler
+            *state                         # produce length of state L
+            }
+          "copy" : {                     # "copy" message handler
+            val := VNomCtor(V)
+            # val := copy(V)                 # create shallow copy of V,
+            # delete(val, V)                 # remove old self-ID
+            # val[val] := copy(V[V])         # add new self-ID
+            # val[val, "State"] := copy(state) # make shallow copy of state L
+            # val                            # produce the copy of V
+            }
+          "key" : {                      # "key" message handler
+            !state                         # generate keys (names),
+            }                              #   ordered by state L
+          "keylist" : {                  # "keylist" message handler
+            copy(state)                    # produce L of keys (names),
+            }                              #   ordered by state L
+          "pop" | "get" : {              # "pop" and "get" message handlers
+            val := V[idx := pull(state)]   # get idx and val
+            delete(V, idx)                 # remove idx from keys of V
+            val                            # produce val
+            }
+          "pull" : {                     # "pull" message handler
+            val := V[idx := pull(state)]   # get idx and val
+            delete(V, idx)                 # remove idx from keys of V
+            val                            # produce val
+            }
+          "type" : {                     # "type" message handler
+            V[V, "Type"]                   # produces Type property
+            }                              #   as an L-value
+          "kind" : {                     # "kind" message handler
+            V[V, "Kind"]                   # produces Kind property
+            }                              #   as an L-value
+          "id" : {                       # "id" message handler
+            V[V, "ID"]                     # produces ID property
+            }                              #   as an L-value
+          "image" : {                    # "image" message handler
+            V[V, "ID"] || "(" || *state || ")" # produces s
+            }
+          "metatable" : {                # "metatable" message handler
+            V[V, "Mttbl"]                  # produce metatable
+            }                              #   as an L-value
+          default : fail
+          }
+        default : fail
+        }
+      }
+end
+
+# see tests/test_vnom.* for demonstrations

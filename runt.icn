@@ -71,6 +71,7 @@ procedure main(args)
   local traceout    # if !args == "--verbose" then write else 2
   local timings     # for test-timing report
   local totalTime   # for test-timing report
+  local workingdir  # current working directory, read from PWD
   if *args < 1 | !args == "--help" then {
     write(USAGE)
     write(USAGE1)
@@ -93,8 +94,11 @@ procedure main(args)
   dirs := []
   every put( dirs, directory_seq(!args) || "/" )
   if *dirs == 0 then dirs := put( dirs, "./" )
+  workingdir := getenv("PWD")
   every dir := !dirs
     do {
+      chdir(workingdir) | (
+        write("Could not change to directory: ", workingdir) & next)
       chdir(dir) | (write("Could not change to directory: ", dir) & next)
       # For each file in the directory
       every dirEntry := !(dirListing := open(".")) do {
@@ -157,7 +161,7 @@ procedure main(args)
     right,                  # 10 f1         f justify 1st col  left
     left,                   # 11 f2         f justify 2nd col  right
     )
-  write("\nTotal testing time (milliseconds, with 10 mS resolution): ", totalTime +:= &time)
+  write("\nTotal testing time (milliseconds, within whatever resolution): ", totalTime +:= &time)
 
   # exit code zero unless falure was encountered when abort === write_abort
   exit( \failure | 0)
