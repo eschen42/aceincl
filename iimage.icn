@@ -1,3 +1,5 @@
+$ifndef _iimage_
+$define _iimage_
 ############################################################################
 #
 #        File:     iimage.icn
@@ -163,7 +165,6 @@
 #    such problems.
 #
 ############################################################################
-$ifndef _iimage_
 
 $ifndef SPCS
 $define SPCS "  "
@@ -404,5 +405,4 @@ procedure idump(f, x[])  #: write images of values in list x
    return x[-1] | &null
 end
 
-$define _iimage_
 $endif # _iimage_

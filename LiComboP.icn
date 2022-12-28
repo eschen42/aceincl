@@ -1,3 +1,5 @@
+$ifndef _LiComboP_
+$define _LiComboP_
 ############################################################################
 #
 #   File:     LiComboP.icn
@@ -33,12 +35,10 @@
 #     Recurrently suspend lists combining finite seqs.
 #
 ############################################################################
-$ifndef _LiComboP_
-$define _LiComboP_
 
 $ifndef _wora_
-$error wora.icn must be included for definition of procedure wora(id)
-$endif
+$include "wora.icn"
+$endif # _wora_
 
 procedure LiP(A) #: produce lists combining infinite sequences
   # Generate combinations of argument results for list-invocation,

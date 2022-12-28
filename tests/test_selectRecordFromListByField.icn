@@ -1,4 +1,6 @@
-$include "../selectRecordFromListByField.icn"
+# assume that LPATH includes ..
+
+$include "selectRecordFromListByField.icn"
 
 record ion(name, polarity)
 

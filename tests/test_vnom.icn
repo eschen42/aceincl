@@ -5,7 +5,11 @@
 # $define VNOM_MAIN_XCODE
 # $define VNOM_MAIN_XIMAGE
 
-$include "../vnom.icn"
+# assume that LPATH includes ..
+
+$include "lindel.icn"
+$include "vnom.icn"
+$include "jsonparse.icn"
 
 $ifdef VNOM_MAIN_XIMAGE
   link ximage
@@ -18,7 +22,7 @@ $ifdef VNOM_MAIN_XCODE
 $endif
 
 procedure main()
-  local V, k, v, Vcopy
+  local V, k, v, Vcopy, L
 
   # VNomCtor(Original, Type, ID, Metatable, Disposable, Kind)
   V := vnew(, "vtype", , , , "vkind")
@@ -26,13 +30,26 @@ procedure main()
   $ifdef VNOM_MAIN_XIMAGE
     write("ximage(k):\n", ximage(k))
   $endif
-  every v := key(k) do write("metatable[\"", v, "\"] := ", image(k[v]))
+  L := []
+  every v := key(k) do put(L, v)
+  L := sort(L)
+  every v := !L do write("metatable[\"", v, "\"] := ", image(k[v]))
   vmsg(V, "push", 1, "bye bye")
   vmsg(V, "put", "hola", "mundo")
+  vmsg(V, "put", "delete3", "york")
+  vmsg(V, "put", "delete4", "kent")
   vmsg(V, "push", "hello", "world")
+  vmsg(V, "put", "coda", "tail")
+  every write(vmsg(V, "strings"))
   $ifdef VNOM_MAIN_XIMAGE
     write("ximage(V):\n", ximage(V))
   $endif
+  write("bykey \"delete3\": " , vmsg(V, "bykey" , "delete3"))
+  vmsg(V, "delbykey", "delete3")
+  write("byrank 4: ", vmsg(V, "byrank", 4))
+  vmsg(V, "delbyrank", 4)
+  write("bykey \"coda\": " , vmsg(V, "bykey" , "coda"))
+  vmsg(V, "delbykey", "coda")
   Vcopy := vmsg(V, "copy")
   $ifdef VNOM_MAIN_XIMAGE
     write("ximage(Vcopy):\n", ximage(Vcopy))
@@ -85,4 +102,10 @@ procedure main()
   v := create write(" --> ", vmsg(V, "!"))
   k := create writes(vmsg(V, "key"))
   while @k do @v
+
+  V := vnew()
+  vmsg(V, "put", "xyzzy", "you are in a maze of little twisty passages")
+  vmsg(V, "put", "x", table())
+  V["x", "foo"] := "bar"
+  every write(vmsg(V, "strings"))
 end

@@ -1,7 +1,9 @@
-$include "../RecTable.icn"
-$include "../fieldedDataFile.icn"
-$include "../wora.icn"
-$include "../fileDirIo.icn"
+# assume that LPATH includes ..
+
+$include "RecTable.icn"
+$include "fieldedDataFile.icn"
+$include "wora.icn"
+$include "fileDirIo.icn"
 $define prog_dir_path prog_path_parts() || path_separator()
 
 link ximage

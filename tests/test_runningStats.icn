@@ -1,6 +1,9 @@
-$include "../runningStats.icn"
+# assume that LPATH includes ..
+
+$include "runningStats.icn"
 
 link ximage
+link numbers
 
 # test case inspired by:
 #   https://rosettacode.org/wiki/Cumulative_standard_deviation#Icon_and_Unicon
@@ -8,5 +11,10 @@ procedure main()
   local s, W, x
   W := welford_running(0, 0, 0)
   every s := welford_add(W, x := ![2,4,4,4,5,5,7,9])
-  write(ximage(welford_get(W)))
+  x := welford_get(W)
+  # brittle hack to make Unicon (quad precision) match Icon (double precision)
+  x.sampleVariance := frn(x.sampleVariance, 11, 9)
+  x.SD := frn(x.SD, 11, 9)
+  x.SE := frn(x.SE, 11, 9)
+  write(ximage(x))
 end

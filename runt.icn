@@ -37,26 +37,58 @@
 #
 ############################################################################
 #
-#   links: popen, showtbl
+#   links: showtbl
 #   requried includes: fileDirIo.icn
 #
 ############################################################################
 
 $include "fileDirIo.icn"
-$define USAGE  "usage: icon runt.icn [--continue] [--verbose] dir_names"
+$include "lindel.icn"
+
+$define USAGE  "usage: icon runt.icn [--continue] [--verbose] dir_names [test_names]"
 $define USAGE1 "      --continue: run other tests after a test fails"
 $define USAGE2 "      --verbose: trace test results"
 $define USAGE3 "      --help - print this message"
+$define USAGE4 "Any test_names supplied constitute an exclusive list of tests"
+$define USAGE5 "to run; e.g., to run only test_baton and test_baton_main, type:"
+$define USAGE6 "  runt tests baton baton_main"
 
-link popen  # for procedure popen
+#$define HIDE_CMDLINE &fail
+$define HIDE_CMDLINE &null
+#$define SHOW_TIMINGS &fail
+$define SHOW_TIMINGS &null
+
+$ifndef _UNIX
+  $ifdef _MS_WINDOWS         # _MS_WINDOWS
+    $ifdef _MS_WINDOWS_NT    # _MS_WINDOWS and _MS_WINDOWS_NT
+      # e.g., for Unicon on MS Windows
+      $define SET_LPATH "set LPATH=" || workingdir || "&& "
+    $else                    # _MS_WINDOWS but not _MS_WINDOWS_NT
+      # e.g., for portableIcon on MS Windows
+      # kludge: if PATH starts with a lowercase drive letter, path search
+      #   fails; however, beginning with a semicolon hacks the issue away.
+      #   This could not be addressed via smudge.cmd. Is it a Cygnal issue?
+      $define SET_LPATH "set PATH=;%PATH%&& set LPATH="||workingdir||"&& "
+    $endif
+  $else                      # neither _MS_WINDOWS nor _UNIX
+    # e.g. for unknown POSIX shell ...
+    $define SET_LPATH "LPATH=" || workingdir || " "
+  $endif
+$else                        # _UNIX
+  # e.g., for Linux, FreeBSD, or MacOS
+  $define SET_LPATH "LPATH=" || workingdir || " "
+$endif
+
 link showtbl # for procedure showtbl
 
 # flag that exit should produce error status even with --continue argument
-global failure
+global failure, portableIcon, win_unicon
 
 # run all the test_*.icn for which there is a matching test_*.std
 procedure main(args)
   local abort       # if !args == "--continue" then write else stop
+  local bespoke     # names of individual tests to run rather than all
+  local cmd         # scratch variable for tracing commands
   local dir         # one member of dirs
   local dirEntry    # entry in current working directory
   local dirListing  # names of files and subdirectores in CWD
@@ -77,53 +109,134 @@ procedure main(args)
     write(USAGE1)
     write(USAGE2)
     write(USAGE3)
+    write(USAGE4)
+    write(USAGE5)
+    write(USAGE6)
     exit(if *args < 1 then 1 else 0)
   }
-  traceout := if !args == "--verbose" then write else 2
-  abort    := if !args == "--continue" then write_abort else stop
+
+  traceout :=
+    if !args == "--verbose" then write else 2
+  abort :=
+    if !args == "--continue" then write_abort else stop
   if traceout === 2
-    then write( &errout, "To trace output,  invoke as:   icon "
-              , &progname, " --verbose")
+    then
+      write( &errout, "To trace output,  invoke as:   icon "
+           , &progname, " --verbose")
+    else
+      every dir := Lfind(args, "--verbose")
+        do args := Ldelete(args, dir, )
   if abort === stop
-    then write( &errout, "To run all tests, invoke as:   icon "
-              , &progname, " --continue")
+    then
+      write( &errout, "To run all tests, invoke as:   icon "
+           , &progname, " --continue")
+    else
+      every dir := Lfind(args, "--continue")
+        do args := Ldelete(args, dir, )
+  win_unicon := (&features == "MS Windows NT", &features == "POSIX")
+  portableIcon := (
+    &features == "MS Windows",
+    &features == "Cygwin"
+    , not (&features == "MS Windows NT")
+    , not (&features == "POSIX")
+    , not (&features == "UNIX")
+    , 1
+    )
+  if SHOW_TIMINGS & \win_unicon
+    then
+      write(&errout,
+        "Windows Unicon detected; pipes & co-expressions may fail")
+    else
+      if \win_unicon
+        then
+          write(&errout,
+            "Windows Unicon detected; pipe & co-expressions may fail")
   # timing support
   totalTime := -&time
   timings := table(-1)
   # dirs either lists the directory arguments or the current directory
   dirs := []
-  every put( dirs, directory_seq(!args) || "/" )
-  if *dirs == 0 then dirs := put( dirs, "./" )
-  workingdir := getenv("PWD")
+  every put(dirs, directory_seq(!args) || path_separator())
+  if *dirs == 0
+    then dirs := put( dirs, "." || path_separator())
+  # prepare for specification of individual tests, if any
+  bespoke := []
+  every testName := !args
+    do
+      if not directory_seq(testName)
+        then put(bespoke, "test_" || testName || ".icn")
+  workingdir := pwd() # getenv("PWD")
   every dir := !dirs
     do {
       chdir(workingdir) | (
-        write("Could not change to directory: ", workingdir) & next)
+        write("Could not change to working directory: ", workingdir) & next)
       chdir(dir) | (write("Could not change to directory: ", dir) & next)
       # For each file in the directory
       every dirEntry := !(dirListing := open(".")) do {
         # All paths should be relative to the directory-under-test
-        # Assume it's a file if it begins with test; check tha it ends with .icn
+        # If "bespoke" is of length > 0, skip tests not in list
+        if (*bespoke > 0, not(dirEntry == !bespoke))
+          then next
+        # Assume it's a test file if its name begins with "test";
+        #   check that it ends with ".icn"
         if dirEntry ?
              dirEntry == ( testName := ="test_" || tab(find(".icn")) ) || =".icn"
           then (
             # Write nothing unless we find a .std file
             filExpected := open( testName || ".std")
             # Report that we will run the test
-          , write("\n", testName)
+          , write("::: Running ", testName)
           , timings[testName] := -&time
             # Prepare to generate the observed result lines
-          , filObserved := popen( "icon " || testName || ".icn", "r")
+          , &trace := -1
+          #, write(&errout, "... ante")
+          , if \win_unicon # only for Unicon on Microsoft Windows NT
+              then (
+                remove(testName || ".bat") | 1,
+                remove(testName || ".exe") | 1,
+                system(SET_LPATH || "unicon -s -u " || testName || ".icn"),
+                delay(100),
+                system(testName || " > " || testName || ".out")
+                )
+            else if \portableIcon
+              then ( # portableIcon
+                system(
+                  SET_LPATH || "icont -s -u " || testName ||
+                    ".icn && call " || testName || ".bat" ||
+                    " > " || testName || ".out"
+                  )
+                )
+              else ( # Icon
+                if (
+                    cmd <- SET_LPATH || "icont -s -u " || testName || ".icn",
+                    HIDE_CMDLINE | write(&errout, "  building: " || \cmd),
+                    0 = system(\cmd) | break failure := -1
+                    #, write(&errout, "... building returned zero")
+                    )
+                  then (
+                    cmd <- SET_LPATH || "./" || testName || " > " || testName || ".out",
+                    HIDE_CMDLINE | write(&errout, "  running:  " || \ cmd),
+                    0 = system(\cmd) | break failure := -1
+                    #, write(&errout, "... running returned zero"),
+                    )
+                  else break failure := -1
+                )
+          , &trace := 0
+          #, write(&errout, "... post")
+          , filObserved := open(testName || ".out", "r")
             # Create a sequence of expected result lines
-          , linObsC := create traceout("observed: ",!filObserved)
+          , linObsC := create traceout("  observed: ", !filObserved)
           , linCount := 0
             # For each observed result line, abort if expected line does not match
-          , ( every linExpected := traceout("expected: ", !filExpected) do {
+          , ( every linExpected := traceout("  expected: ", !filExpected) do {
                 linCount +:= 1
                 # termination is premature if expected line is not observed
                 linObserved := @linObsC | (
                   abort( " ... line ", linCount
-                       , ": premature termination, expected: '", linExpected, "'"
+                       , ": premature termination, expected: '"
+                       , linExpected, "'"
+                       , if /win_unicon then "" else
+                          " (Windows Unicon pipe or co-expression may have failed.)"
                        )
                 , break
                 )
@@ -133,36 +246,49 @@ procedure main(args)
                        , linExpected ~== linObserved
                        , "' was produced but '"
                        , linExpected
-                       , "' was expected"
+                       , "' was expected\n"
                        ) & break
                 ) | next
               }
             ) | if linObserved := @linObsC
                   # report unexpected output
-                  then abort( " ... line ", linCount
-                            , ": unexpected output: '", linObserved, "'"
-                            )
-                  else timings[testName] +:= &time
+                  then
+                    abort( " ... line ", linCount
+                         , ": unexpected output: '", linObserved, "'\n"
+                         )
+                  else {
+                    timings[testName] +:= &time
+                    write("    Passed")
+                    }
           )
+        remove(testName || ".out")
       }
       close(\dirListing)
     }
-  # from IPL procs showtbl.icn
-  showtbl(
-    "approx. runtimes, mS", #  1 title      heading title      ""
-    timings,                #  2 tbl        table to be shown  NO DEFAULT
-    ,                       #  3 sort_type  type of sorting    "ref"/"val"
-    ,                       #  4 limit      lines of output    infinite
-    ,                       #  5 sort_order increasing?        "incr"/"decr"
-    ,                       #  6 posit      first column       "val"/"ref"
-    40,                     #  7 w1         width of 1st col   10
-    ,                       #  8 w2         width of 2nd col   10
-    ,                       #  9 gutter     width between cols 3
-    right,                  # 10 f1         f justify 1st col  left
-    left,                   # 11 f2         f justify 2nd col  right
-    )
-  write("\nTotal testing time (milliseconds, within whatever resolution): ", totalTime +:= &time)
+  if SHOW_TIMINGS & /win_unicon
+    then{
+      # from IPL procs showtbl.icn
+      showtbl(
+        "approx. runtimes, mS", #  1 title      heading title      ""
+        timings,                #  2 tbl        table to be shown  NO DEFAULT
+        ,                       #  3 sort_type  type of sorting    "ref"/"val"
+        ,                       #  4 limit      lines of output    infinite
+        ,                       #  5 sort_order increasing?        "incr"/"decr"
+        ,                       #  6 posit      first column       "val"/"ref"
+        40,                     #  7 w1         width of 1st col   10
+        ,                       #  8 w2         width of 2nd col   10
+        ,                       #  9 gutter     width between cols 3
+        right,                  # 10 f1         f justify 1st col  left
+        left,                   # 11 f2         f justify 2nd col  right
+        )
+      write("\nTotal testing time (milliseconds, within whatever resolution): ", totalTime +:= &time)
+      }
 
+  if /failure
+    then {
+      write()
+      write("All tests passed. Yippee!!")
+      }
   # exit code zero unless falure was encountered when abort === write_abort
   exit( \failure | 0)
 end

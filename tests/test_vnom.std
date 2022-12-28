@@ -1,20 +1,32 @@
-metatable["keylist"] := procedure VNomMesg
-metatable["metatable"] := procedure VNomMesg
-metatable["bykey"] := procedure VNomMesg
-metatable["*"] := procedure VNomMesg
-metatable["put"] := procedure VNomMesg
-metatable["image"] := procedure VNomMesg
 metatable["!"] := procedure VNomMesg
-metatable["kind"] := procedure VNomMesg
-metatable["type"] := procedure VNomMesg
-metatable["id"] := procedure VNomMesg
-metatable["copy"] := procedure VNomMesg
-metatable["push"] := procedure VNomMesg
+metatable["*"] := procedure VNomMesg
+metatable["bykey"] := procedure VNomMesg
 metatable["byrank"] := procedure VNomMesg
-metatable["pop"] := procedure VNomMesg
-metatable["key"] := procedure VNomMesg
-metatable["pull"] := procedure VNomMesg
+metatable["copy"] := procedure VNomMesg
+metatable["delbykey"] := procedure VNomMesg
+metatable["delbyrank"] := procedure VNomMesg
+metatable["disposable"] := procedure VNomMesg
 metatable["get"] := procedure VNomMesg
+metatable["id"] := procedure VNomMesg
+metatable["image"] := procedure VNomMesg
+metatable["key"] := procedure VNomMesg
+metatable["keylist"] := procedure VNomMesg
+metatable["kind"] := procedure VNomMesg
+metatable["metatable"] := procedure VNomMesg
+metatable["pop"] := procedure VNomMesg
+metatable["pull"] := procedure VNomMesg
+metatable["push"] := procedure VNomMesg
+metatable["put"] := procedure VNomMesg
+metatable["type"] := procedure VNomMesg
+hello: world
+1: bye bye
+hola: mundo
+delete3: york
+delete4: kent
+coda: tail
+bykey "delete3": york
+byrank 4: kent
+bykey "coda": tail
 hello --> world
 1 --> bye bye
 hola --> mundo
@@ -48,3 +60,5 @@ There are 3 values in Vcopy
 foo --> bar
 magic --> 1
 2 --> marker
+xyzzy: you are in a maze of little twisty passages
+{"foo" : "bar"}

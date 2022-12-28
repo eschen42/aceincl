@@ -1,3 +1,5 @@
+$ifndef _selectRecordFromListByField_
+$define _selectRecordFromListByField_
 ############################################################################
 #
 #   File:     selectRecordFromListByField.icn
@@ -76,8 +78,6 @@
 #       }
 #
 ############################################################################
-$ifndef _selectRecordFromListByField_
-$define _selectRecordFromListByField_
 
 procedure selectRecordFromListByField(Lfrom, sField, Ctest) #: produce matching records (or tables)
   # Lfrom   - a list of either:

@@ -1,3 +1,5 @@
+$ifndef _fieldedDataFile_
+$define _fieldedDataFile_
 ############################################################################
 #
 #   File:     fieldedDataFile.icn
@@ -54,13 +56,10 @@
 #     Produce a table of table from an INI file
 #
 ############################################################################
-$ifndef _fieldedDataFile_
-$define _fieldedDataFile_
 
 $ifndef _RecTable_
-$error Must include RecTable.icn for procedure RecTableConstructorC
+$include "RecTable.icn"
 $endif
-
 
 # FieldedData organizes functions that create co-expressions producing
 #   logical lines and fields within a logical line from tabular data

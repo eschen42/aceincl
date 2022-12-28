@@ -1,6 +1,9 @@
 # test rpn.icn routines and rpn_core.rpn words
 $define DEBUG 1
-$include "../rpn.icn"
+
+# assume that LPATH includes ..
+
+$include "rpn.icn"
 
 procedure main( )
   local f

@@ -1,5 +1,7 @@
-$include "../wora.icn"
-$include "../LiComboP.icn"
+# assume that LPATH includes ..
+
+$include "wora.icn"
+$include "LiComboP.icn"
 
 procedure printtuple(ls[])
   local C

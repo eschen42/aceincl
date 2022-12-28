@@ -1,3 +1,5 @@
+$ifndef RPN_INTERPRETER
+$define RPN_INTERPRETER
 ############################################################################
 #
 #	File:     rpn.icn
@@ -1058,4 +1060,5 @@ procedure token( Cin )
   }
 end
 
+$endif # RPN_INTERPRETER
 # vim: ai ts=2 sw=2 et :

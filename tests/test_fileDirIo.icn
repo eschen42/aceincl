@@ -1,12 +1,20 @@
-$include "../fileDirIo.icn"
+# assume that LPATH includes ..
 
 #$define DEBUG
+
 $ifdef DEBUG
   link ximage
+  $define DBGTRC if not &fail then write
+  $define FILEDIRIO_TRACE if not &fail then write
+$else
+  $define DBGTRC if &fail then write
+  $define FILEDIRIO_TRACE if &fail then write
 $endif # DEBUG
 
+$include "fileDirIo.icn"
+
 procedure main()
-  local prgL, r, expected
+  local prgL, r, expected, f, Crslt
   $ifdef DEBUG
     local atmL
     atmL := []
@@ -19,25 +27,47 @@ procedure main()
   write("*prgL = ", *prgL)
   $ifdef DEBUG
     every put(atmL, path_atoms(&progname))
-    write("prog_path_parts")
-    write(ximage(prgL))
-    write("path_atoms")
-    write(ximage(atmL))
-    write(&progname)
-    write(path_constructP{path_atoms(&progname)})
+    DBGTRC(&errout, "prog_path_parts")
+    DBGTRC(&errout, ximage(prgL))
+    DBGTRC(&errout, "path_atoms")
+    DBGTRC(&errout, ximage(atmL))
+    DBGTRC(&errout, &progname)
+    DBGTRC(&errout, path_constructP{path_atoms(&progname)})
   $endif # DEBUG
-
 
   write("exercising directory_seq()")
   directory_seq(prgL[1]) | stop("directory_seq failed for " || prgL[1])
   write("found directory path where program is located")
+
+  write("exercising home()")
+  if not (r := home())
+    then write("home() failed")
+    else {
+      FILEDIRIO_TRACE(&errout, "home dir is " || r)
+      write("home() succeeded")
+      }
+  r := &null
+
   write("exercising pwd()")
   directory_seq(pwd()) | stop("directory_seq failed for " || pwd())
   write("pwd() produced a valid directory path")
 
-  write("exercising alterExtension()")
   write("exercising path_atoms()")
+  if not path_atoms(&progname)
+    then stop("FAILURE")
+
   write("exercising path_constructP()")
+  if not path_constructP{path_atoms(&progname)}
+    then stop("FAILURE")
+
+  DBGTRC(&errout, "path_constructP{path_atoms(&progname)} is:\n   ",
+    path_constructP{path_atoms(&progname)}
+    )
+
+  DBGTRC(&errout, "prgL[1] is ", image(prgL[1]))
+  DBGTRC(&errout, "prgL[2] is ", image(prgL[2]))
+
+  write("exercising alterExtension()")
   expected := prgL[2]
   if path_constructP{path_atoms(&progname)} ?
           r := ( =prgL[1], move(1), tab(0) )
@@ -48,9 +78,37 @@ procedure main()
            , "\nobserved program name (without path or extension): ", r
            )
     }
-  write(
-    if r == expected then "success" else "FAILURE"
-  )
+  if \r == expected
+    then write("success")
+    else stop("FAILURE")
+
+  write("exercising tmpdir() and tmppath()")
+  if (tmppath("foo"), tmppath("bar"))
+    then write("success")
+    else stop("FAILURE")
+
+  write("exercising system_nowait")
+  r := tmppath("foo")
+  DBGTRC(&errout, "result path: ", r)
+  Crslt := system_nowait(
+    "echo \"hello world\" \"with love from Mars and Venus\"> " || r
+    )
+  every 1 to 10
+    do
+      if write("exit code: ", \(@Crslt))
+        then break
+        else delay(100)
+
+  if f := open(r)
+    then {
+      DBGTRC(&errout, "begin every write(!f)")
+      every write(!f)
+      DBGTRC(&errout, "end every write(!f)")
+      close(f)
+      remove(r)
+      write("success")
+      }
+    else stop("FAILURE")
 
   exit(0)
 end

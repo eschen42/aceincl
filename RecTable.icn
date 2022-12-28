@@ -1,3 +1,5 @@
+$ifndef _RecTable_
+$define _RecTable_
 ############################################################################
 #
 #   File:     RecTable.icn
@@ -65,8 +67,6 @@
 #                  RecTablePreamble.
 #
 ############################################################################
-$ifndef _RecTable_
-$define _RecTable_
 
 $ifndef RecTablePreamble
 $define RecTablePreamble "\n  File " || &file || "; Line " || &line || ":\n  Bad Argument ==> "

@@ -1,4 +1,5 @@
-
+$ifndef _fileDirIo_
+$define _fileDirIo_
 ############################################################################
 #
 #   File:     fileDirIo.icn
@@ -19,38 +20,79 @@
 ############################################################################
 #
 #   procedure alterExtension(fn, old_ex, new_ex) : s1, ...
-#     Produce modified fn, substituting new_ex for old_ex
-#
-#   procedure directory_seq(name) : s1, ...
-#     Produce name(s) that name a directory
-#
-#   procedure prog_path_parts() : s1, s2
-#     suspend location then name of program file.
-#
-#   procedure path_atoms(path) : s1, ...
-#     suspend root, subdirectories, filename for a directory path
-#
-#   procedure path_constructP{expr} : s1, ...
-#     construct paths from sequences
+#     Generate modified fn, substituting new_ex for old_ex
+#       - If `new_ex` is "", the trailing period will be removed.
 #
 #   procedure cmd_separator() : s
-#     return platform-specific command separator
+#     Produce platform-specific command separator
+#
+#   procedure directory_seq(name) : s1, ...
+#     Generate name(s) that name a directory
+#
+#   procedure home() : s
+#     Produce platform-specific path to the HOME directory, if available.
+#
+#   procedure path_atoms(path) : s1, ...
+#     Generate root, subdirectories, filename for a directory path
+#
+#   procedure path_constructP{exprs} : s1, ...
+#     Generate paths from sequences of results of exprs.
+#       - `exprs` are comma-separated and used to create a list of
+#         co-expressions.
+#
+#   procedure path_parts(qualname) : s1, s2
+#     Generate location then name from path.
 #
 #   procedure path_separator() : s
-#     return platform-specific path separator
+#     Produce platform-specific path separator
+#
+#   procedure prog_path_parts() : s1, s2
+#     Generate location then name of program file.
 #
 #   procedure pwd() : s
-#     return platform-specific path to the current directory
+#     Produce platform-specific path to the current directory
+#
+#   procedure system_nowait(command:s, title:s) : C
+#     Run command, but do not wait for exit, producing result C
+#       - `command`, command to be passed to shell
+#       - `title`, title for background window, optional, for MS Windows
+#       - `@result` produces `&null` before command exits; exit code after
+#         - Please invoke `@result` till it does not produce `&null` to
+#           delete the file that holds the exit code.
+#
+#   procedure tmpdir() : s
+#     Produce platform-specific path to a tmp directory
+#
+#   procedure tmppath(suffix:s, len:s) : s1, ...
+#     Generate temporary file paths
+#
+#   procedure which(filename:s, all:n|x) : s1, ...
+#     Generate full path(s) for filename on PATH
+#       - on Unix, results are first (or all when `\all`) for `which -a`.
+#       - on Windows, results are first (or all when `\all`) for `where`.
 #
 ############################################################################
 #
-#   links: regexp
+#   requires:
+#     - pipes
+#     - Windows or Linux/MacOS/Unix
 #
 ############################################################################
-$ifndef _fileDirIo_
-$define _fileDirIo_
+#
+#   links: regexp, strings
+#
+############################################################################
 
 link regexp # for regular expressions to support alterExtension
+link strings # for replace(s1, s2, s3)
+             #       replaces all occurrences of s2 in s1 by s3; fails
+             #       if s2 is null.
+
+$define FILEDIRIO_MSWINDOWS (&features == ("MS Windows NT" | "MS Windows"))
+
+$ifndef FILEDIRIO_TRACE
+$define FILEDIRIO_TRACE if &fail then write
+$endif # FILEDIRIO_TRACE
 
 procedure alterExtension(fn, old_ex, new_ex) #: change extension of file name
   ReCaseIndependent()
@@ -65,19 +107,39 @@ end
 
 # adapted from IPL proc io.icn
 procedure directory_seq(name) #: suspend name(s) when a directory
-  suspend (close(open(name || "/.")), name)
+  suspend (close(open(name || path_separator() || ".")), name)
+end
+
+procedure home() #: return platform-specific path to the home directory, if available
+  local C, x, cmd
+  static is_mswin
+  initial is_mswin := FILEDIRIO_MSWINDOWS
+  if \is_mswin
+    then
+      return map(getenv("HOMEDRIVE"), string(&lcase), string(&ucase)) ||
+        getenv("HOMEPATH")
+    else
+      return getenv("HOME")
 end
 
 # inspired by IPL proc io.icn
 procedure prog_path_parts() #: suspend location then name of program file.
+  local i, prog_name
+  prog_name := which(&progname) | &progname
+  suspend path_parts(prog_name)
+end
+
+# inspired by IPL proc io.icn
+procedure path_parts(qualname) #: suspend location then name from path.
   local i
-  &progname ? every i := find(path_separator())
+  qualname ? every i := find(path_separator())
   if /i
-    then suspend pwd()
-    else suspend &progname[1:i]
-  if /i
-    then suspend &progname
-    else suspend &progname[i+1:0]
+    then {
+      suspend pwd() | qualname
+      fail
+      }
+  suspend &progname[1:i]
+  suspend &progname[i+1:0]
 end
 
 # inspired by IPL proc io.icn
@@ -121,31 +183,182 @@ procedure path_constructP(atoms) #: construct paths from sequences
 end
 
 procedure cmd_separator() #: return platform-specific command separator
-  $ifdef _MS_WINDOWS
-    return "&"
-  $else
-    return ";"
-  $endif
+  static is_mswin
+  initial is_mswin := FILEDIRIO_MSWINDOWS
+  return if \is_mswin then "&" else ";"
 end
 
 procedure path_separator() #: return platform-specific path separator
-  $ifdef _MS_WINDOWS
-    return "\\"
-  $else
-    return "/"
-  $endif
+  static is_mswin
+  initial is_mswin := FILEDIRIO_MSWINDOWS
+  #ACE if \is_mswin then every write(&errout, &features)
+  return if \is_mswin then "\\" else "/"
 end
 
 procedure pwd() #: return platform-specific path to the current directory
-  $ifdef _MS_WINDOWS
-    local C, x, cmd
-    cmd := "cd"
-    C := create x := open(cmd, "pr") & !x@&source | close(x) & &fail
-    while x := @C
-    return x
-  $else
+  local C, x, cmd
+  static is_mswin
+  initial is_mswin := FILEDIRIO_MSWINDOWS
+  if \is_mswin
+    then {
+    return 2(
+      x := open("cmd /c echo %CD%", "pr"),
+      read(x),
+      close(x)
+      )
+    }
+  else
     return getenv("PWD")
-  $endif
+  stop("fileDirIo.icn: FATAL pwd() did not produce current directory")
+end
+
+procedure system_nowait(command, title) #: run command, do not wait for exit
+  # result:C - C produces &null before command terminates; exit code after
+  # command:s - command to be passed to shell
+  # title:s - title for background window, optional, only for MS Windows
+  static win_unicon    # not &null when running Unicon on Microsoft Windows
+  static portableIcon  # not &null when running protableIcon on MS Windows
+  local  f             # system command with escaped double quotes
+  local  rslt          # C producing exit code, or null if not yet available
+  local  exit_code     # integer exit code or null if not yet available
+  
+  initial {
+    win_unicon := (&features == "MS Windows NT", &features == "POSIX")
+    portableIcon := (
+      &features == "MS Windows",
+      &features == "Cygwin"
+      , not (&features == "MS Windows NT")
+      , not (&features == "POSIX")
+      , not (&features == "UNIX")
+      , 1
+      )
+    }
+
+  rslt := tmppath()
+  if \win_unicon | \portableIcon
+    then { # unicon or portableIcon on Microsoft Windows NT
+      f := 0
+      command ? every upto('"') do f +:= 1
+      0 = f % 2 |
+        stop(
+          "fileDirIo.icn: argument for system_async cannot ",
+          "contain odd number of double quotes.\n   ",
+          command, "\n   There are ", f, " double quotes."
+          )
+      /title := tmppath(, , "")
+
+      f := "start \"" || title || "\" /b cmd /c \"(" ||
+        command || ") ^& (echo %ERRORLEVEL% > \"" || rslt || "\") \""
+      FILEDIRIO_TRACE(&errout, "background task: ", f)
+      if 0 ~= system(f)
+        then fail
+      }
+    else { # regular Icon
+      f := replace(command, "\"", "\\\"") || "; echo $?> " || rslt
+      FILEDIRIO_TRACE(&errout, "(" || f || ") &")
+      if 0 ~= system("(" || f || ") &")
+        then fail
+      FILEDIRIO_TRACE(&errout, "returned from: ", "(" || f || ") &")
+      }
+  # return C producing exit code after exit, &null before exit
+  return create repeat {
+    FILEDIRIO_TRACE(&errout, "... Crslt scans file: ", rslt)
+    # when exit_code is null and result file can be opened
+    if (/exit_code, f := open(rslt, "r"))
+      then {
+        # get the exit code if it's available
+        #   Does this block until process completes?
+        if exit_code := integer(read(f))
+          then {
+            # if file can be opened and read (containing an integer), then
+            #   close and delete file
+            close(f)
+            remove(rslt)
+            }
+          else {
+            # otherwise, close but don't delete the file
+            close(f)
+            }
+        }
+    # produce either null or exit code
+    FILEDIRIO_TRACE(&errout, "... Crslt transmits: ", image(exit_code))
+    exit_code @&source
+    }
+end
+
+procedure tmpdir() #: return platform-specific path to a tmp directory
+  # note: both procs/io.icn and procs/popen.icn in IPL define tempfile
+  #       nothing in IPL defines tmpfile, tmpdir, or tempdir
+  static is_mswin
+  initial is_mswin := FILEDIRIO_MSWINDOWS
+  return if \is_mswin
+    then
+      # there are only two possibilities of success on Windows
+      return getenv("TMP" | "TEMP") || path_separator()
+    else
+      # inspired by answers to https://unix.stackexchange.com/q/352107
+      #   because some unixes do not define  TMPDIR, TMP, or TEMP
+      return (getenv("TMPDIR" | "TMP" | "TEMP") | "/tmp") || path_separator()
+end
+
+procedure tmppath(suffix, len, dir) #: generate temporary file paths
+  initial {
+    # core of randomize() in procs/random.icn in IPL
+    &random :=
+      map("sSmMhH", "Hh:Mm:Ss", &clock) +
+      map("YyXxMmDd", "YyXx/Mm/Dd", &date) +
+      &time
+    }
+    # core of tempname(...) in procs/io.icn
+    /suffix := "tmp"
+    /len := 8
+    /dir := tmpdir()
+    suspend 2(
+      ?1,                                # change &random
+      name := dir || "tmp" || left(&random, len, "0") || "." || suffix,
+      not close(open(name, "r"))
+      )
+end
+
+
+# procedure which(filename:s, all:n|x) : s1 | s2 | ...
+procedure which(filename, all) #: Generate full path(s) for filename on PATH
+  local f, path, pathsL
+  static whichcmd, stderrnull
+  initial {
+    $ifndef _UNIX
+      $ifdef _MS_WINDOWS         # _MS_WINDOWS
+        $ifdef _MS_WINDOWS_NT    # _MS_WINDOWS and _MS_WINDOWS_NT
+          whichcmd := "where "
+          stderrnull := " 2>NUL"
+        $else                    # _MS_WINDOWS but not _MS_WINDOWS_NT
+          whichcmd := "where "
+          stderrnull := " 2>NUL"
+        $endif
+      $else                      # neither _MS_WINDOWS nor _UNIX
+        $error 'Refusing to translate because platform has not been tested'
+      $endif
+    $else                        # _UNIX
+      whichcmd := "which -a "
+      stderrnull := " 2>/dev/null"
+    $endif
+    }
+    # initialize list of paths
+    pathsL := [ ]
+    # produce path matching filename (or paths if \all)
+    f := whichcmd || filename || stderrnull
+    f := open(f, "pr") | fail
+    # read(f) should produce something like "/usr/bin/mkfifo"
+    #   produce path only if file exists at such a path
+    while path := read(f)
+      do put(pathsL, path)
+    close(f)
+    # only produce first path if all flag has not been set
+    if /all
+      then pathsL := [get(pathsL)]
+    # suspend paths until exhausted
+    suspend !pathsL
+    # fail once exhausted
 end
 
 $endif # _fileDirIo_

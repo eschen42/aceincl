@@ -1,4 +1,6 @@
-$include "../wora.icn"
+# assume that LPATH includes ..
+
+$include "wora.icn"
 
 procedure main()
   local foo, bar, baz
