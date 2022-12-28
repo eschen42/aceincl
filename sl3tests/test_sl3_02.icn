@@ -1,0 +1,281 @@
+#!/usr/bin/env icon
+# include three prerequisites for sl3.icn
+$include "fileDirIo.icn" # fileDirIo.icn is a prerequisite for sl3.icn
+$include "vnom.icn" # vnom.icn is a prerequisite for sl3.icn
+$include "jsonparse.icn" # fileDirIo.icn is a prerequisite for sl3.icn
+$include "sl3.icn"
+
+# The signatures of sl3 messages are as follows:
+#
+#   sl3(&null, "open",      path,    options, errC ) : VNom (a SQLite3 conn)
+#   sl3(conn,  "prepare",   stmt                   ) : VNom (a prep_stmt)
+#   sl3(conn,  stmt:s,      parmL:L, errC          ) : n|fail
+#   sl3(conn,  prep_stmt:V, &null|x, errC          ) : n|fail
+#   sl3(conn,  "fetch"                             ) : VNom (a result row)
+#   sl3(conn,  "close",     errC                   ) : &null
+
+# TEST_SL3_TRACE should fail or resolve to a function like write
+#$define TEST_SL3_TRACE (not &fail) & write
+$define TEST_SL3_TRACE (&fail) & write
+
+$define ERR_OFFSET [0, -1][2]
+
+#$define XIMAGE ximage
+$ifdef XIMAGE
+link ximage
+$endif # XIMAGE
+
+global g_exit_code
+
+procedure main(args)
+  local cnxn
+  local path_s, options_s, errC
+  local chunk, err_off
+  local prep_stmt
+  if not which("sqlite3")
+    then {
+      write(&errout,"    sqlite3 not detected - test case is BLOCKED")
+      exit(-1)
+      }
+
+  # don't forget this or infinite forks will fill the process space... 
+  baton_flatware(args)
+
+  # set exit code for premature termination
+  g_exit_code := -1
+ 
+  # create co-expression to handle error strings
+  @(errC := create while write(@ &source))
+
+  # open sqlite and establish baton
+  path_s := ":memory:"
+  options_s := &null
+  # sl3new(path, options, errC) VNomSQLite3
+  # sl3(connection, "open", path, options, errC) : VNomSQLite3
+  if not (cnxn := sl3new(path_s, options_s, errC))
+    then stop("failed to open connection")
+  err_off := ERR_OFFSET
+$ifdef XIMAGE
+  write(ximage(cnxn))
+$endif # XIMAGE
+
+  sl3(cnxn, "CREATE TABLE invent(desc text, number integer, amount float);", , errC)
+  if write(trace_and_reset_error(err_off))
+    then sl3_close_dispose(cnxn, errC)
+
+  sl3(cnxn, ".dump", , errC)
+  if write(trace_and_reset_error(err_off))
+    then sl3_close_dispose(cnxn, errC)
+  write("  ... cnxn status after .dump before fetch: ", image(cnxn["status"]))
+  every chunk := sl3(cnxn, "fetch")
+    do write_ordered_values(chunk)
+  write("  ... cnxn status after fetch: ", image(cnxn["status"]))
+  #> PRAGMA foreign_keys=OFF;
+  #> BEGIN TRANSACTION;
+  #> CREATE TABLE invent(desc text, number integer, amount float);
+  #> COMMIT;
+
+  # ----- test one: prepared statement with named parameters -----
+
+  # sl3(conn, "prepare", stmt ) : VNom (a prep_stmt)
+  prep_stmt := sl3(
+    cnxn,
+    "prepare",
+    "INSERT INTO invent VALUES(@desc, @number, @amount);"
+    )
+  if write(trace_and_reset_error(err_off))
+    then sl3_close_dispose(cnxn, errC)
+$ifdef XIMAGE
+  write(ximage(prep_stmt))
+$endif # XIMAGE
+
+  vmsg(prep_stmt, "put", "@desc", "a description")
+  vmsg(prep_stmt, "put", "@number", 42)
+  vmsg(prep_stmt, "put", "@amount", 3.14159)
+  write(vmsg(prep_stmt, "kind"))
+  write_vnom_fields(prep_stmt)
+  #> PreparedStatement
+  #>   @desc: a description
+  #>   @number: 42
+  #>   @amount: 3.14159
+  #>   ?: INSERT INTO invent VALUES(@desc, @number, @amount);
+
+  # sl3(conn,  prep_stmt:V, &null|x, errC          ) : n|fail
+  if not sl3(cnxn, prep_stmt, , errC)
+    then {
+      write("test one: execute prepared statement with named parameters failed")
+      sl3_close_dispose(cnxn, errC)
+      }
+  if write(trace_and_reset_error(err_off))
+    then sl3_close_dispose(cnxn, errC)
+
+  write("  ... cnxn status after sending prep_stmt: ", image(cnxn["status"]))
+
+  every chunk := sl3(cnxn, "fetch")
+    do write(image(chunk))
+  write("  ... cnxn status after fetch-and-discard: ", image(cnxn["status"]))
+
+  sl3(cnxn, "select * from invent;", , errC)
+  if write(trace_and_reset_error(err_off))
+    then sl3_close_dispose(cnxn, errC)
+
+  write("  ... cnxn status after select: ", image(cnxn["status"]))
+
+  every chunk := sl3(cnxn, "fetch")
+    do write_vnom_fields(chunk)
+
+  write("  ... cnxn status after fetch: ", image(cnxn["status"]))
+
+  # - no named parameters -
+  sl3(cnxn, "select 'plugh' as xyzzy, 'end of test one' as marker;", , errC)
+  if write(trace_and_reset_error(err_off)) then sl3_close_dispose(cnxn, errC)
+  every chunk := sl3(cnxn, "fetch") do write_vnom_fields(chunk)
+
+  # ----- test two: prepared statement with unnamed parameters -----
+
+  # sl3(conn, "prepare", stmt ) : VNom (a prep_stmt)
+  prep_stmt := sl3(
+    cnxn,
+    "prepare",
+    "INSERT INTO invent VALUES(?, ?3, ?2);"
+    )
+  if write(trace_and_reset_error(err_off))
+    then sl3_close_dispose(cnxn, errC)
+$ifdef XIMAGE
+  write(ximage(prep_stmt))
+$endif # XIMAGE
+
+  vmsg(prep_stmt, "put", "?1", "another description")
+  vmsg(prep_stmt, "put", "?2", 1066)
+  vmsg(prep_stmt, "put", "?3", 1.414214)
+  write(vmsg(prep_stmt, "kind"))
+  write_vnom_fields(prep_stmt)
+  #> PreparedStatement
+  #>   ?1: another description
+  #>   ?3: 1.414214
+  #>   ?2: 1066
+  #>   ?: INSERT INTO invent VALUES(?, ?3, ?2);  #> @desc: a description
+
+  # sl3(conn,  prep_stmt:V, &null|x, errC          ) : n|fail
+  if not sl3(cnxn, prep_stmt, , errC)
+    then {
+      write("test two: execute prepared statement with unnamed parameters failed")
+      sl3_close_dispose(cnxn, errC)
+      }
+  if write(trace_and_reset_error(err_off))
+    then sl3_close_dispose(cnxn, errC)
+
+  write("  ... cnxn status after sending prep_stmt: ", image(cnxn["status"]))
+
+  every chunk := sl3(cnxn, "fetch")
+    do write(image(chunk))
+  write("  ... cnxn status after fetch-and-discard: ", image(cnxn["status"]))
+
+  sl3(cnxn, "select * from invent;", , errC)
+  if write(trace_and_reset_error(err_off))
+    then sl3_close_dispose(cnxn, errC)
+
+  write("  ... cnxn status after select: ", image(cnxn["status"]))
+
+  every chunk := sl3(cnxn, "fetch")
+    do write_vnom_fields(chunk)
+
+  write("  ... cnxn status after fetch: ", image(cnxn["status"]))
+
+  # - no named parameters -
+  sl3(cnxn, "select 'plover' as xyzzy, 'end of test two' as marker;", , errC)
+  if write(trace_and_reset_error(err_off)) then sl3_close_dispose(cnxn, errC)
+  every chunk := sl3(cnxn, "fetch") do write_vnom_fields(chunk)
+
+  # ----- test three: implicit prepared statement with unnamed parameters -----
+
+  # sl3(conn,  stmt:s,      parmL:L, errC          ) : n|fail
+  if not sl3(
+    cnxn,
+    "INSERT INTO invent VALUES(?, ?, ?);",
+    ["foobar", 2401, 21.0/7],
+    errC
+    )
+    then {
+      write("test three: execute implicit prepared statement failed")
+      sl3_close_dispose(cnxn, errC)
+      }
+  if write(trace_and_reset_error(err_off))
+    then sl3_close_dispose(cnxn, errC)
+
+  write("  ... cnxn status after sending prep_stmt: ", image(cnxn["status"]))
+
+  every chunk := sl3(cnxn, "fetch")
+    do write(image(chunk))
+  write("  ... cnxn status after fetch-and-discard: ", image(cnxn["status"]))
+
+  sl3(cnxn, "select * from invent;", , errC)
+  if write(trace_and_reset_error(err_off))
+    then sl3_close_dispose(cnxn, errC)
+
+  write("  ... cnxn status after select: ", image(cnxn["status"]))
+
+  every chunk := sl3(cnxn, "fetch")
+    do write_vnom_fields(chunk)
+
+  write("  ... cnxn status after fetch: ", image(cnxn["status"]))
+
+  # - no named parameters -
+  sl3(cnxn, "select 'Y2' as xyzzy, 'end of test three' as marker;", , errC)
+  if write(trace_and_reset_error(err_off)) then sl3_close_dispose(cnxn, errC)
+  every chunk := sl3(cnxn, "fetch") do write_vnom_fields(chunk)
+
+  # set exit code for normal termination
+  g_exit_code := 0
+ 
+  &error := 0
+  # stop sqlite3 and shut down the batons
+  sl3_close_dispose(cnxn, errC)
+end
+
+procedure sl3_close_dispose(cnxn, errC)
+  # stop sqlite3 and shut down the batons
+  write("closing cnxn")
+  sl3(cnxn, "close", errC)
+  write("closed cnxn")
+  write(
+    "vmsg(cnxn[\"batonsys\"], \"dispose\") produced ",
+    image(cnxn["disposition"])
+    )
+  exit(g_exit_code)
+end
+
+procedure trace_and_reset_error(error_offset)
+  local result
+  if &error = 0
+    then fail
+  result := ""
+  if ((TEST_SL3_TRACE) === write, &error < error_offset)
+    then {
+      result ||:= "There were " || error_offset - &error || " errors; "
+      result ||:= "last error " || &errornumber || " - " || &errortext
+      &error := error_offset
+      return result
+      }
+  &error := error_offset
+end
+
+procedure write_vnom_fields(chunk, f)
+  local hack
+  /f := &output
+  # row fields are ordered by VNom key
+  every hack := vmsg(chunk, "key")
+    do write(f, "  ", hack, ": ", chunk[hack])
+  return
+end
+
+procedure write_ordered_values(chunk, f)
+  local hack
+  /f := &output
+  # results of commands are ordered by a discardable integer key
+  every hack := key(chunk)
+    do
+      if hack ~=== chunk
+        then write(f, "  ", chunk[hack])
+  return
+end

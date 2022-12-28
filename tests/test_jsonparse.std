@@ -1,0 +1,13 @@
+  V is:
+    hello (string): world (string)
+    1 (integer): bye bye (string)
+    hola (string): 42 (integer)
+  json(V) = {"hello" : "world", "1" : "bye bye", "hola" : 42}
+  jsonparse(json(V)) is:
+    hello (string): world (string)
+    1 (string): bye bye (string)
+    hola (string): 42 (integer)
+  new j = [{"xyzzy":"plugh","plover":"p\\l\"o'v?er"}]
+  jsonparse(new j)[1] is:
+    xyzzy (string): plugh (string)
+    plover (string): p\l"o'v?er (string)

@@ -1,0 +1,45 @@
+$include "fileDirIo.icn"
+$include "batonsys.icn"
+$define PLUGH  "A hollow voice says \"plugh\"."
+$define PLOVER "end of SQLite result list"
+procedure main(args)
+  local batonsys
+  local chunk
+  #ACE write(&errout, &progname, "(")
+  #ACE every write(&errout, "    ", !args)
+  #ACE write(&errout, ")")
+
+  # handle case where sqlite3 is unavailable
+  if not which("sqlite3")
+    then {
+      write(&errout, "    sqlite3 not on path: simulating expected output")
+      every write(![
+        "A hollow voice says \"plugh\".",
+        "end of SQLite result list",
+        "vmsg(batonsys, \"dispose\") produces 0"
+        ])
+      exit(0)
+      }
+  # handle calls to baton_main; does not return; kind of like a fork...
+  baton_flatware(args)
+  # indicate that the test is actually running
+  write(&errout,
+    "    sqlite3 found on path: test is comparing actual and expected output")
+  # create object to manage batonsys
+  batonsys :=
+    baton_system("sysbaton", "sqlite3 -batch -json", &current, &current)
+  # Send a query to SQLite
+  vmsg(batonsys, "send", "select 'plugh' as xyzzy;")
+  # Send "[]" to SQLite to mark end-of-output
+  vmsg(batonsys, "send", ".print '[]'")
+  # Retrieve lines until end-of-output mark (or closed pipe)
+  while chunk := vmsg(batonsys, "receive")
+    do
+      case chunk of {
+        "[{\"xyzzy\":\"plugh\"}]" : write(PLUGH)
+        "[]" : break write(PLOVER)
+        default : write(chunk)
+        }
+  write("vmsg(batonsys, \"dispose\") produces ", image(vmsg(batonsys, "dispose")))
+  exit(0)
+end

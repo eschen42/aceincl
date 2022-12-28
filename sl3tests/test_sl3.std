@@ -1,0 +1,17 @@
+greeting: hello
+greeting: world
+        echo: off
+         eqp: off
+     explain: auto
+     headers: off
+        mode: json
+   nullvalue: ""
+      output: stdout
+colseparator: "|"
+rowseparator: "\n"
+       stats: off
+       width: 
+    filename: :memory:
+closing cnxn
+closed cnxn
+vmsg(cnxn["batonsys"], "dispose") produces 0

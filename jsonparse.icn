@@ -1,0 +1,394 @@
+$ifndef JSONPARSE
+$define JSONPARSE
+############################################################################
+#
+#   File:     jsonparse.icn
+#
+#   Subject:  Convert JSON text to and from corresponding Icon values.
+#
+#   Authors:   Carl Sturtivant, Gregg Townsend
+#
+#   Date:     August 26, 2016
+#
+############################################################################
+#
+#   This file is in the public domain.
+#
+############################################################################
+#
+# json(L|T|i|n|r|s) : s
+#
+#   Takes data (list|table|integer|string|real|&null) and produces a JSON
+#   string defining that data.  See http://json.org/.  It is an error
+#   to use another type, even in substructures.  To serialize other types,
+#   see codeobj.icn from the Icon Programming Library.
+#
+#   Works with Icon data structures constructed from tables and lists
+#   containing nulls, strings, integers and reals as well as values of
+#   those last four types.  Note:
+#
+#   - Icon table default values are ignored on conversion to JSON.
+#   - Circular structures are not supported.
+#   - Lists or tables used more than once in a structure will be duplicated
+#     in the JSON generated.
+#
+# jsonparse(s) : x
+#
+#   Takes a JSON string and produces the corresponding Icon value or
+#   structure. Tables in such a structure will have default values of null.
+#   JSON text containing true and false (booleans) will have those converted 
+#   to the strings "true" and "false" respectively. 
+#
+#   Although these routines should work with UTF-8 strings, nothing is
+#   included here to ensure that UTF-8 is correctly supported.
+#
+#   An Icon string whose Icon characters are from the extension of ASCII
+#   to 256 characters obtained by including the additional characters 
+#   defined by ISO/IEC 8859-1 will henceforth be called a Latin-1 string,
+#   Latin-1 being the first 256 unicode code points. However here, those
+#   characters are encoded each as a single Icon character.
+#
+#   Quoted strings inside JSON text are always UTF-8 encoded, with all control
+#   characters escaped using the \uxxxx convention, where xxxx is a string
+#   of four hexadecimal digits indicating a unicode code point. JSON is
+#   defined as a unicode standard.
+#
+# the VNOM preprocessor symbol
+#
+#   Note that (by design) conversion may not be completely symmetric when
+#   the VNOM preprocessor symbol is defined before this file is included.
+#   If VNOM is defined, then a VNOM (call it "x") will have a "Kind" of
+#   "VNom", i.e., x[x, "Kind"] == vmsg(x, "kind") == "VNom".  The advantage
+#   of a VNom over an ordinary Icon table is that it preserves the order of
+#   the member keys in a JSON object (rather than reordering them
+#   alphabetically).
+#
+############################################################################
+
+record _json_pair(key, value)
+record _json_token(type, val)
+
+global _json_tok, _json_tokens, _json_runerrC
+
+procedure json(x, errC)
+    local s, k, ks, v
+    static lsep, tsep
+    initial {
+        lsep := ", "
+        tsep := " : "
+    }
+    if \errC
+      then _json_runerrC := errC
+      else @(
+        _json_runerrC :=
+          create
+            while v := @&source
+              do runerr(v[1], v[2])
+        )
+    case type(x) of {
+        "list" : {
+            s := "["
+            every v := !x
+              do
+                if v ~=== x
+                  then s ||:= json(v) || lsep
+            s := s[1: -*lsep]
+            return  s||"]"
+        }
+        "table" : {
+            $ifdef VNOM
+                # test non-exhaustively whether this looks like a VNom
+                # (i.e., test whether it has most of the VNom attributes)
+                if (
+                  \(v := x[x]),
+                  key(v) == "Dspsbl",
+                  key(v) == "ID",
+                  key(v) == "Kind",
+                  key(v) == "Mttbl",
+                  key(v) == "State",
+                  key(v) == "Type"
+                  )
+                  then {
+                    # build JSON hash using !v["State"] as order of keys;
+                    # discard all other attributes of the VNom
+                    s := "{"
+                    every k := !v["State"]
+                      do {
+                        ks := if numeric(k) then string(k) else k
+                        s ||:= json(ks) || tsep || json(x[k]) || lsep
+                        }
+                    s := s[1: -*lsep]
+                    return s||"}"
+                    }
+                  else {
+                    # build JSON hash using key(x) as order of keys
+                    s := "{"
+                    every k := key(x)
+                      do
+                        if k ~=== x # discard circular references
+                          then s ||:= json(k) || tsep || json(x[k]) || lsep
+                    s := s[1: -*lsep]
+                    return s||"}"
+                    }
+            $else
+                # build JSON hash using key(x) as order of keys
+                s := "{"
+                every k := key(x)
+                  do
+                    if k ~=== x # discard circular references
+                      then s ||:= json(k) || tsep || json(x[k]) || lsep
+                s := s[1: -*lsep]
+                return s||"}"
+            $endif # VNOM
+        }
+        "integer" : return string(x)
+        "string" : return _json_escape(x)
+        "real" : return string(x)
+        "null" : return "null"
+        # TODO map set to table with &null values
+        # TODO map record to table using field(R, i) from records.icn in 
+        #      IPL as keys; a VNom could be helpful here, e.g., with
+        #      x[x, "Kind"] == "Dynamic"
+        default: _json_runerr(123, type(x)) | fail
+    }
+end
+
+procedure jsonparse(s, errC)
+    local v
+    if \errC
+      then _json_runerrC := errC
+      else @(
+        _json_runerrC :=
+          create
+            while v := @&source
+              do runerr(v[1], v[2])
+        )
+    s := string(s) | _json_runerr(103, s) | fail
+    _json_tokens := create _json_tokenize(s)
+    _json_tok := @_json_tokens
+    return _json_Value()
+end
+
+procedure _json_runerr(i, x)
+  [i, x] @_json_runerrC
+end
+
+procedure _json_Value()  #JSON value as Icon value
+    local value
+    case _json_tok.type of {
+        "string"|"number"|"boolean"|"null": {
+            value := _json_tok.val #booleans are "true"/"false" in Icon
+            _json_tok := @_json_tokens
+            return value
+        }
+        "[": return _json_Array()
+        "{": return _json_Object()
+        default: _json_runerr(123, _json_tok.val) | fail
+    }
+end
+
+procedure _json_Array()  #JSON array, as Icon list
+    local ls
+    _json_tok := @_json_tokens
+    if _json_tok.type == "]"
+      then {
+        _json_tok := @_json_tokens
+        return []
+        }
+    ls := _json_ValSeq()
+    if _json_tok.type ~== "]"
+      then
+        _json_runerr(123, _json_tok.val) | fail
+    _json_tok := @_json_tokens
+    return ls
+end
+
+procedure _json_ValSeq()     #non-empty JSON array body, as Icon list
+    local ls
+    ls := [_json_Value()]
+    while _json_tok.type == ","
+      do {
+        _json_tok := @_json_tokens
+        put(ls, _json_Value())
+        }
+    return ls
+end
+
+procedure _json_Object() #JSON object, as Icon table
+    local t
+    _json_tok := @_json_tokens
+    if _json_tok.type == "}"
+      then {
+        _json_tok := @_json_tokens
+        $ifdef VNOM
+            return vnew()
+        $else
+            return table()
+        $endif # VNOM
+        }
+    t := _json_PairSeq()
+    if _json_tok.type ~== "}"
+      then
+        _json_runerr(123, _json_tok.val) | fail
+    _json_tok := @_json_tokens
+    return t    
+end
+
+procedure _json_PairSeq()    #body of non-empty JSON object, as Icon table
+    local t, p
+    $ifdef VNOM
+        t := vnew()
+    $else
+        t := table()
+    $endif # VNOM
+    repeat {
+        p := _json_Pair()
+        $ifdef VNOM
+            vmsg(t, "put", p.key, p.value)
+        $else
+            t[p.key] := p.value
+        $endif # VNOM
+        if _json_tok.type ~== ","
+          then return t
+        _json_tok := @_json_tokens
+        }
+end
+
+procedure _json_Pair()   #JSON key value pair separated by a colon, as Icon record
+    local k, val
+    if _json_tok.type == "number"
+      then {
+        _json_tok.val :=  "\"" || _json_tok.val || "\""
+        _json_tok.type := "string"
+        }
+    if _json_tok.type ~== "string"
+      then
+        _json_runerr(123, _json_tok.val) | fail
+    k := _json_tok.val
+    _json_tok := @_json_tokens
+    if _json_tok.type ~== ":"
+      then
+         _json_runerr(123, _json_tok.val) | fail
+    _json_tok := @_json_tokens
+    val := _json_Value()
+    return _json_pair(k, val)
+end
+
+procedure _json_tokenize(s)
+    local white, punctuation, token, x
+    white := ' \t\r\n'
+    punctuation := '[]{}:,'
+    s ? repeat {
+        tab(many(white))
+        if pos(0) then break
+        token :=  
+            _json_token( x := tab( any( punctuation)), x) |
+            _json_token("string", _json_matchstring()) |
+            _json_token("number", _json_matchnumber()) |
+            _json_token("boolean", ="true" | ="false") |
+            _json_token("null", if ="null" then &null ) |
+            write(&errout,
+              "\n" || s ||
+              "\n" || s[1:&pos] || "^"
+              ) |
+            _json_runerr(123, s[1:&pos]) |
+            fail
+        suspend token
+    }
+end
+
+procedure _json_matchnumber()
+    local p, s, n
+    p := &pos
+    s := ="-" | ""
+    s ||:= tab(many(&digits)) 
+    s ||:= ="."
+    s ||:= tab(many(&digits))
+    s ||:= tab(any('eE'))
+    s ||:= tab(any('+-'))
+    s ||:= tab(many(&digits))
+    n := numeric(s) | { &pos := p; fail }
+    return n
+end
+
+procedure _json_matchstring()
+    local p, s, x
+    p := &pos
+    ="\"" | fail
+    s := ""
+    repeat {
+        s ||:= x := tab( upto('\\"')) |   { &pos := p; fail }
+        if ="\""
+          then {
+            # error only if _json_controlchars(x) succeeds
+            _json_runerr(123, _json_controlchars(x))
+            return s
+        }
+        s ||:= _json_escapeseq() |   { &pos := p; fail }
+    }
+end
+
+procedure _json_controlchars(s)
+    static controlchars
+    initial controlchars := cset(&ascii[1:33])
+    s **:= controlchars
+    if *s = 0 then fail else return s
+end
+
+procedure _json_escapeseq()
+    local ch, hex
+    ="\\" | fail
+    return case ch := move(1) of {
+        default : 
+            _json_runerr(123, ch) | fail
+        "\"": "\""
+        "\\": "\\"
+        "/" : "/"
+        "b" : "\b"
+        "f" : "\f"
+        "n" : "\n"
+        "r" : "\r"
+        "t" : "\t"
+        "u" : {
+            hex := move(4)|tab(0)
+            _json_unichar(hex) |
+                _json_runerr(123, hex) | fail
+        }
+    }
+end
+
+procedure _json_unichar(hex)
+    static hexdigits, cpt
+    initial hexdigits := &digits++'abcdef'
+    hex := map(hex)
+    ( *hex=4 & *(hex--hexdigits)=0 ) | fail
+    cpt := integer("16r"||hex)
+        #UTF-8 encoding
+    if cpt < 128 then return char(cpt)
+    if cpt < 2048 then {
+        return  char( ior( 2r11000000, ishift(cpt, -6))) ||
+                char( ior( 2r10000000, iand( 2r111111, cpt)))
+    }
+    return  char( ior( 2r11100000, ishift(cpt, -12)) ) ||
+            char( ior( 2r10000000, iand( 2r111111, ishift(cpt, -6)))  ) ||
+            char( ior( 2r10000000, iand( 2r111111, cpt)))
+end
+
+procedure _json_escape(s)
+    local ctlchars, escapechars, ans, ch, esc
+    if ctlchars := _json_controlchars(s) then {
+        escapechars := ctlchars ++ '\\"\b\f\n\r\t'
+        ans := ""
+        s ? repeat {
+            ans ||:= tab( upto(escapechars)|0)
+            if pos(0) then return ans
+            if any(ctlchars) then
+                s ||:= "\\u00"||image(move(1))[4:-1]
+            else
+                s ||:= image(move(1))
+        }
+    }
+    else return image(s)
+end
+
+$endif # JSONPARSE

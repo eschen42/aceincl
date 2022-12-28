@@ -1,0 +1,327 @@
+$ifndef BATON_MAIN
+$define BATON_MAIN
+############################################################################
+#
+# File: baton_main.icn
+#
+# Subject: baton_main.icn - main, links with baton.icn to make baton program
+#
+# Author: Arthur Eschenlauer (https://orcid.org/0000-0002-2882-0508)
+#
+# Date: 29 November 2022
+#
+# URL: https://chiselapp.com/user/eschen42/repository/aceincl/file?name=baton_main.icn
+#
+############################################################################
+#
+# This file is in the public domain. Art Eschenlauer has waived all
+# copyright and related or neighboring rights to:
+#   baton_main.icn - main, links with baton.icn to make baton program
+# For details, see:
+#   https://creativecommons.org/publicdomain/zero/1.0/
+#
+#   If you require a specific license and public domain status is not
+#   sufficient for your needs, please substitute the MIT license (see
+#   below), bearing in mind that the copyright "claim" is solely to meet
+#   your requirements and does not imply any restriction on use or copying
+#   by the author:
+#
+#     Copyright (c) 2022, Arthur Eschenlauer
+#    
+#     Permission is hereby granted, free of charge, to any person obtain-
+#     ing a copy of this software and associated documentation files (the
+#     "Software"), to deal in the Software without restriction, including
+#     without limitation the rights to use, copy, modify, merge, publish,
+#     distribute, sublicense, and/or sell copies of the Software, and to
+#     permit persons to whom the Software is furnished to do so, subject
+#     to the following conditions:
+#    
+#     The above copyright notice and this permission notice shall be
+#     included in all copies or substantial portions of the Software.
+#    
+#     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+#     EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+#     OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+#     NON-INFRINGEMENT.
+#    
+#     IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR
+#     ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+#     CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+#     WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+#
+############################################################################
+#
+# baton_main.icn - main, links with baton.icn to make baton program
+#
+#   The baton program provides a networkless way to pass data between
+#   processes using five files, one for a buffer and the others for coordin-
+#   ating the transfer (in a manner inspired by RS-232).
+#
+#   Usage:
+#     baton read  bufferfile [timeout_sec]
+#     baton write bufferfile [timeout_sec]
+#     baton clean bufferfile
+#
+#     write reads from standard input into bufferfile in coordination with
+#         read, which copies from bufferfile to standard output. Optional
+#         timeout in seconds for initial handshake.
+#
+#     clean removes coordination files that may remain when
+#         read or write experiences abnormal termination
+#
+#   Build:
+#     The `main` procedure is identified using a preprocessor macro.
+#
+#     Step 1. Create a file `baton_main_build.icn` containing:
+#       $define baton_main main
+#       $include "baton_main.icn"
+#    
+#     Step 2. Translate:
+#       icont -u -o baton baton_main.icn      # on Unix-like OSs
+#       icont -u -o baton.exe baton_main.icn  # on MS Windows
+#
+#   The resulting program can be used as in the following (trivial) example:
+#     $include "fileDirIo.icn"
+#     procedure main()
+#       # Pass one line of data from output pipe to input pipe.
+#       fsend := open("baton write buffer", "wp")
+#       frecv := open("baton read  buffer", "rp")
+#       write(fsend, "hello world from " || &progname)
+#       write(read(frecv))
+#       close(fsend)
+#       close(frecv)
+#     end
+#
+#   However, the ordinary way to use this program is to have "baton write"
+#   stream one baton to the standard input of a process and to have
+#   "baton read" stream the standard output of a process to another baton,
+#   as demonstrated in the example for `baton_flatware` below.
+#
+#
+# procedure baton_main(args) : exit(0|1)
+#
+#   This procedure is the entrypoint implementing the behavior described
+#   above.  It may be translated as a separate executable, as described
+#   above, or may be invoked via baton_flatware (described below) to
+#   provide this additional functionality to another executable.
+#
+# procedure baton_flatware(args) : fail | exit(0|1)
+#
+#   The intention of this procedure is to simplify creating a single
+#   executable file that can have two very disticnt behaviors:
+#   - Its "ordinary" behavior when not diverted to `baton_main`
+#   - The `baton_main` behavior, invoked by the "parent" instance of the
+#     executable.
+#
+#   This procedure diverts the control to `baton_main(args)` when:
+#     - `*args = 3`
+#     - `args[1]` is `"baton_main"`
+#     - `args[2]` is `"read" | "write" | "select" | "clean"`
+#     - `args[3]` is a string (to name a buffer)
+#   Otherwise, the procedure fails.
+#
+#   An exemple below demonstrates its usage:
+#
+#   This procedure is named "flatware" because:
+#     - like the C function `fork()`, it spawns another process, and
+#     - like a knife, it divides the functionality of the same program
+#       among two processes, and
+#     - like a spoon, it catches program arguments before control falls
+#       through to the ordinary execution path, and
+#     - it needed a name suggestive of a fork but different to emphasize
+#       its somewhat different purpose.
+#
+# procedure baton_crowbar() : stop | n
+#
+#   Kill the program when baton_flatware is not linked (which is a
+#   programming error) to avert "infinite forking" that consumes all slots
+#   in the process table.
+#
+#   This approach is imperfect since one may circumvent it with
+#     invocable all
+#   or with
+#     invocable baton_flatware
+#
+############################################################################
+#
+# The following example demonstrates invocation of baton_main via
+# baton_flatware:
+#
+# ```
+#   # example usage of baton_flatware; requires that sqlite3 is on PATH
+#   $define BATON_TRACE if &fail then write
+#   $define BATON_CWARN create repeat write(&errout, \@&source | "") | @&main
+#   $define BATON_TIMEOUT_MS 200
+#   $include "baton_main.icn" # implies include baton.icn and fileDirIo.icn
+#   $define PLUGH  "A hollow voice says \"plugh\"."
+#   $define PLOVER "end of SQLite result list"
+#   procedure main(args)
+#     local baton_self # string to invoke child "flatware" via baton_flatware
+#     local chunk      # temporary holder for a string of data
+#     local status     # exit status of child process, captured from Cexit
+#     local Cexit      # co-expression producing exit code if child "flatware"
+#                      #   has terminated; producing &null otherwise
+#     local Crecv      # co-expression to receive input from child "flatware"
+#     local Csend      # co-expression to send output to child "flatware"
+#     # handle calls to baton_main; does not return; kind of like a fork...
+#     baton_flatware(args)
+#     # path to self is platform-specific; this has been minimally tested!
+#     baton_self := &progname
+#     if not (&features == "MS Windows" | path_separator() == baton_self[1])
+#       then baton_self := "." || path_separator() || &progname
+#     baton_self ||:= " baton_main "
+#     # Exchange data with external process via batons.
+#     #   Launch process in background; if process dies, no SIGPIPE
+#     #   can reach us (see: https://unix.stackexchange.com/a/84828)
+#     #   which is good because Icon does not catch signals.
+#     Cexit :=
+#       system_nowait(
+#         baton_self || " read buf_in | " ||
+#         "sqlite3 -batch -json | " ||
+#         baton_self || " write buf_out"
+#         )
+#     # Set up baton for standard output of process
+#     Crecv := create baton("read", "buf_out", &main)
+#     # Set up baton for standard input of process
+#     # and activate baton so that it can receive a value
+#     @( Csend := create baton("write", "buf_in", &main) )
+#     # Send a command to SQLite, producing output
+#     ".show" @Csend
+#     # Send a query to SQLite, not producing any output
+#     "select 'plover' where 1 = 0;" @Csend
+#     # Send a query to SQLite to mark end-of-output
+#     "select 'plugh' as xyzzy;" @Csend
+#     # Retrieve lines until end-of-output mark (or closed pipe)
+#     while chunk := @Crecv
+#       do
+#         if chunk == "[{\"xyzzy\":\"plugh\"}]"
+#           then break write(PLUGH)
+#           else write(chunk)
+#     # Send "[]" to SQLite to mark end-of-output
+#     ".print '[]'" @Csend
+#     # Retrieve lines until end-of-output mark (or closed pipe)
+#     while chunk := @Crecv
+#       do
+#         if chunk == "[]"
+#           then break write(PLOVER)
+#           else write(chunk)
+#     # Close the output baton
+#     char(4) @Csend
+#     # Close the input baton to clean up baton files.
+#     @Crecv
+#     # Wait (briefly) for process exit and retrieve exit code.
+#     every 1 to 5
+#       do {
+#         write("SQLite exit code: ", image(status := @Cexit))
+#         if /status
+#           then delay(BATON_TIMEOUT_MS)
+#           else break
+#         }
+#   end
+#  
+############################################################################
+
+$ifndef BATON_PATIENCE
+$define BATON_PATIENCE 1
+$endif # BATON_PATIENCE
+
+$ifdef UNDEFINED
+  $define BATON_TRACE write
+  $else
+  $define BATON_TRACE &fail
+$endif # UNDEFINED
+
+$include "baton.icn"
+$include "fileDirIo.icn"
+$include "lindel.icn"
+
+procedure baton_main(args)
+  local f_in, f_write, f_read, rslt
+  if 2 > *args | not args[1] == ("read" | "write" | "clean" | "select")
+    then {
+      write(&errout, "usage: " || &progname || " read   bufferfile [timeout_secs]")
+      write(&errout, "       " || &progname || " write  bufferfile [timeout_secs]")
+      write(&errout, "       " || &progname || " select bufferfile [timeout_secs]")
+      write(&errout, "       " || &progname || " clean  bufferfile")
+      write(&errout, "")
+      write(&errout,
+        "    write reads from standard input into bufferfile in")
+      write(&errout,
+        "        coordination with read, which copies from")
+      write(&errout,
+        "        bufferfile to standard output.")
+      write(&errout, "")
+      write(&errout,
+        "    clean removes coordination files that may remain when")
+      write(&errout,
+        "        read or write experiences abnormal termination")
+      write(&errout, "")
+      write(&errout,
+        "    select returns a zero exit code only when")
+      write(&errout,
+        "        data are available to read")
+      write(&errout, "")
+      exit(1)
+      }
+  # program was invoked with arguments;
+  # - insert two dummy arguments after the first two arguments,
+  # - then, call baton with those args
+  args := Linsert(args, 3, [&null, &null])
+
+  # first handle baton select
+  if args[1] == "select"
+    then {
+      if baton ! args
+        then exit(0)
+        else exit(1)
+      }
+  # otherwise, handl baton read | write | clean
+  #   procedure baton(what, buffer, file, Cwarn, connTimeout)  : s | fail
+  #   procedure Linsert(L, i, Lins) : L
+  if rslt := (baton ! args)
+    then
+      if args[1] == "write" | rslt ~== "baton read: received EOT"
+        then
+          write(
+            &errout,
+            "Error for ", args[1], ", ", args[2],
+            " - \"", rslt, "\""
+            )
+  BATON_TRACE(&errout, "exit from: ", &progname,
+    " ", args[1],
+    " ", args[2]
+    )
+  exit(0)
+end
+
+# invoke alternative functionality when arguments indicate the necessity.
+procedure baton_flatware(args)
+  # deduce whether args are patterned for invocation of baton_main;
+  #   if not, fail
+  if 3 ~= *args | not args[1] == "baton_main" |
+    not args[2] == ("read" | "write" | "clean" | "select")
+    then fail
+  # remove the sentinel "baton_main" argument
+  pop(args)
+  # baton_main calls exit
+  baton_main(args)
+  # baton_main should not fail,
+  #   but if it were to fail, we would want to exit
+  write(&errout, &progname,
+    ": Procedure baton_main failed, which is SEVERELY abnormal")
+  exit(1)
+  stop(&progname,
+    ": Procedure baton_main failed, which is SEVERELY abnormal")
+end
+
+# Kill the program when baton_flatware is not linked; this is imperfect
+# since one may circumvent it with
+#   invocable all
+# or with
+#   invocable baton_flatware
+procedure baton_crowbar()
+  if not proc("baton_flatware")
+    then stop("FATAL DEFECT - main(args) must call baton_flatware(args)")
+  return
+end
+$endif # BATON_MAIN

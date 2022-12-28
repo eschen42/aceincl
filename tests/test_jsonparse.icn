@@ -1,0 +1,29 @@
+$include "vnom.icn"
+$include "jsonparse.icn"
+
+# vnew and vmsg are $defined in vnom.icn as:
+#   $define vnew VNomCtor
+#   $define vmsg VNomMesg
+procedure main()
+  local V, j
+  V := vnew()
+  vmsg(V, "push", 1, "bye bye")
+  vmsg(V, "put", "hola", 42)
+  vmsg(V, "push", "hello", "world")
+  write("  V is:")
+  every j := vmsg(V, "key")
+    do write("    ", j, " (", type(j), "): ", V[j], " (", type(V[j]), ")")
+  j := json(V)
+  write("  json(V) = ", j)
+  V := jsonparse(j) | stop("jsonparse(", image(j), ") failed")
+  write("  jsonparse(json(V)) is:")
+  every j := vmsg(V, "key")
+    do write("    ", j, " (", type(j), "): ", V[j], " (", type(V[j]), ")")
+  j := "[{\"xyzzy\":\"plugh\",\"plover\":\"p\\\\l\\\"o'v?er\"}]"
+  write("  new j = ", j)
+  V := jsonparse(j)[1]
+  write("  jsonparse(new j)[1] is:")
+  every j := vmsg(V, "key")
+    do write("    ", j, " (", type(j), "): ", V[j], " (", type(V[j]), ")")
+end
+

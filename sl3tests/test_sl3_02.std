@@ -1,0 +1,55 @@
+  ... cnxn status after .dump before fetch: "fetching"
+  PRAGMA foreign_keys=OFF;
+  BEGIN TRANSACTION;
+  CREATE TABLE invent(desc text, number integer, amount float);
+  COMMIT;
+  ... cnxn status after fetch: "open"
+PreparedStatement
+  @desc: a description
+  @number: 42
+  @amount: 3.14159
+  ?: INSERT INTO invent VALUES(@desc, @number, @amount);
+  ... cnxn status after sending prep_stmt: "fetching"
+  ... cnxn status after fetch-and-discard: "open"
+  ... cnxn status after select: "fetching"
+  desc: a description
+  number: 42
+  amount: 3.14159
+  ... cnxn status after fetch: "open"
+  xyzzy: plugh
+  marker: end of test one
+PreparedStatement
+  ?1: another description
+  ?3: 1.414214
+  ?2: 1066
+  ?: INSERT INTO invent VALUES(?, ?3, ?2);
+  ... cnxn status after sending prep_stmt: "fetching"
+  ... cnxn status after fetch-and-discard: "open"
+  ... cnxn status after select: "fetching"
+  desc: a description
+  number: 42
+  amount: 3.14159
+  desc: another description
+  number: 1.414214
+  amount: 1066.0
+  ... cnxn status after fetch: "open"
+  xyzzy: plover
+  marker: end of test two
+  ... cnxn status after sending prep_stmt: "fetching"
+  ... cnxn status after fetch-and-discard: "open"
+  ... cnxn status after select: "fetching"
+  desc: a description
+  number: 42
+  amount: 3.14159
+  desc: another description
+  number: 1.414214
+  amount: 1066.0
+  desc: foobar
+  number: 2401
+  amount: 3.0
+  ... cnxn status after fetch: "open"
+  xyzzy: Y2
+  marker: end of test three
+closing cnxn
+closed cnxn
+vmsg(cnxn["batonsys"], "dispose") produced 0

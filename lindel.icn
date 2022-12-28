@@ -1,0 +1,139 @@
+$ifndef LINDEL
+$define LINDEL
+############################################################################
+#
+# File: lindel.icn
+#
+# Subject: lindel.icn - in-place delete or insert of a pseudo-section of L
+#
+# Author: Arthur Eschenlauer (https://orcid.org/0000-0002-2882-0508)
+#
+# Date: 7 November 2022
+#
+# URL: https://chiselapp.com/user/eschen42/repository/aceincl/file?name=lindel.icn
+#
+############################################################################
+#
+# This file is in the public domain. Art Eschenlauer has waived all
+# copyright and related or neighboring rights to:
+#   lindel.icn - in-place delete or insert of a pseudo-section of L
+# For details, see:
+#   https://creativecommons.org/publicdomain/zero/1.0/
+#
+# If you require a specific license and public domain status is not suffi-
+# cient for your needs, please substitute the MIT license (see below), bearing
+# in mind that the copyright "claim" is solely to meet your requirements
+# and does not imply any restriction on use or copying by the author:
+#
+#   Copyright (c) 2022, Arthur Eschenlauer
+#
+#   Permission is hereby granted, free of charge, to any person obtaining
+#   a copy of this software and associated documentation files (the
+#   "Software"), to deal in the Software without restriction, including
+#   without limitation the rights to use, copy, modify, merge, publish,
+#   distribute, sublicense, and/or sell copies of the Software, and to
+#   permit persons to whom the Software is furnished to do so, subject
+#   to the following conditions:
+#
+#   The above copyright notice and this permission notice shall be
+#   included in all copies or substantial portions of the Software.
+#
+#   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+#   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+#   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
+#   IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+#   CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+#   TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+#   SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+#
+############################################################################
+#
+# lindel.icn - in-place delete or insert of a pseudo-section of L
+#
+# A section of a list is itself a new list.  Because ordinary section
+# and concatenation operations produce a distinct list, all references to a
+# list resulting from an insertion or deletion need to be updated to refer-
+# ence the resulting list.  Doing insertions and deletions in-place pre-
+# serves the validity of all references, albeit not cheaply; if you can
+# cheaply update references, that is perferable to using these procedures.
+#
+# These procedures modify their first argument in-place, producing the modi-
+# fied L rather than a copy of L.  Changes at the end of the list are
+# cheaper than at the beginning because pull() is invoked fewer times.
+#
+# procedure Ldelete(L, i, j) : L
+#   delete indexes i to j from L (in-place), producing L
+#     (use j = 0 to delete through end of L)
+#
+# procedure Linsert(L, i, Lins) : L
+#   insert list Lins into L (in-place) before index i, producing L 
+#     (i is ignored when L is empty)
+#
+# procedure Lfind(L, x) : i1, i2, ...
+#   generate indices where x appears in L
+#
+############################################################################
+#
+# see also: ldelete(L, spec) from lists.icn in the IPL procedures section
+#
+############################################################################
+
+# procedure Ldelete(L, i, j) : L
+#   delete indexes i to j from L (in-place), producing L 
+procedure Ldelete(L, i, j)
+  local tmp
+  tmp := []
+  # when j is &null, set it to i + 1 to delete element
+  /j := i + 1
+  # when j is > *L, set it to zero
+  j := if j > *L then 0
+  # when j is zero, set it to *L + 1 to delete to end of L
+  if j = 0 then j := *L + 1
+  # check L and j for validity
+  if 0 < *L < (j - 1) then fail
+  # tmp holds the list members after the end of the deletion
+  every j to *L do push(tmp, pull(L))
+  # remove all list members starting at the beginning of the deletion
+  every i to j - 1 do pull(L)
+  # append the post-deletion members to the original list
+  if *tmp > 0
+    then every put ! ([L] ||| tmp)
+  # produce the modified original list
+  return L
+end
+
+# procedure Linsert(L, i, Lins) : L
+#   insert list Lins before index i into L (in-place), producing L 
+procedure Linsert(L, i, Lins)
+  local tmp
+  tmp := []
+  # when L is an empty list, put members of Lins onto L (ignoring i)
+  if *L = 0
+    then {
+      every put(L, !Lins)
+      return L
+      }
+  # check L and i for validity
+  if *L < i - 1 then fail
+  # tmp holds the list members after the end of the insertion
+  every i to *L do push(tmp, pull(L))
+  # put Lins after insertion, followd by tmp (if not empty)
+  if *tmp > 0
+    then every put ! ([L] ||| Lins ||| tmp)
+    else every put ! ([L] ||| Lins)
+  # produce the modified original list
+  return L
+end
+
+# procedure Lfind(L, x) : i1, i2, ...
+#   generate indices where x appears in L
+procedure Lfind(L, x)
+  local i
+  # for each index, suspend index if member matches x
+  every i := 1 to *L
+    do
+      if L[i] === x
+        then suspend i
+end
+
+$endif # LINDEL

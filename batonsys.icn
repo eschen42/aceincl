@@ -1,0 +1,374 @@
+$ifndef BATONSYS
+$define BATONSYS
+############################################################################
+#
+#   File:     batonsys.icn
+#
+#   Subject:  Invoke process using batons to exchange input and output.
+#
+#   Author:   Arthur C. Eschenlauer
+#
+#   Date:     December 13, 2022
+#
+#   URL:      https://chiselapp.com/user/eschen42/repository/aceincl/file?name=batonsys.icn
+#
+############################################################################
+#
+#   This file is in the public domain. Art Eschenlauer has waived all
+#   copyright and related or neighboring rights to:
+#     batonsys.icn - Invoke process using batons to exchange input and output
+#   For details, see:
+#     https://creativecommons.org/publicdomain/zero/1.0/
+#
+#   If you require a specific license and public domain status is not
+#   sufficient for your needs, please substitute the MIT license (see
+#   below), bearing in mind that the copyright "claim" is solely to meet
+#   your requirements and does not imply any restriction on use or copying
+#   by the author:
+#
+#     Copyright (c) 2022, Arthur Eschenlauer
+#
+#     Permission is hereby granted, free of charge, to any person obtain-
+#     ing a copy of this software and associated documentation files (the
+#     "Software"), to deal in the Software without restriction, including
+#     without limitation the rights to use, copy, modify, merge, publish,
+#     distribute, sublicense, and/or sell copies of the Software, and to
+#     permit persons to whom the Software is furnished to do so, subject
+#     to the following conditions:
+#
+#     The above copyright notice and this permission notice shall be
+#     included in all copies or substantial portions of the Software.
+#
+#     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+#     EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+#     OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+#     NON-INFRINGEMENT.
+#
+#     IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR
+#     ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+#     CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+#     WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+#
+############################################################################
+#
+# baton_system(basename:s, cmd:s, stdin:C, stdout:C) : BatonSys (a VNom)
+#   VNom initializer - produces VNom implementing BatonSys message handling
+#                      (i.e., messages are invoked via the vmsg procedure)
+#
+# VNomBatonSysCtor(Original:T, Type:s, ID:s, Metatable:T, Disposable:n|x, Kind:s):V
+#   Constructor - Construct a new VNomBatonSys instance.
+#   - Original:T
+#       if not null, a plain table, or another VNom (or extension
+#       of VNom), making this a "copy-constructor"
+#   - Type:s
+#       Type property, if null then Type of \Original; default is
+#       Kind || typecount
+#   - ID:s
+#       ID property, required
+#   - Metatable:T
+#       table mapping message strings to message-handler procedures
+#   - Disposable:n?
+#       Disposable property, if not null, a disposable property is
+#       added and set to "yes", to be switched to "done" if the
+#       VNom has been disposed
+#   - Kind:s
+#       Kind property, defaults to "BatonSys"
+#
+# VNomBatonSysMesg(args[]) : x
+#   VNom message handler extension for BatonSys messages
+#   - Extensions to VNom messages (handled by VNomBatonSysMesg):
+#     vmsg(V, "create", s, C, C ) : C  # CreateProcess, producing result
+#                                      #   from system_nowait
+#                                      #   arg1: command string
+#                                      #   arg2: C providing stdin
+#                                      #   arg3: C receiving stdout
+#     vmsg(V, "send",   s       ) : n  # Send s to stdin of child pro-
+#                                      #   cess from system_nowait
+#     vmsg(V, "receive"         ) : s  # Receive s from stdout of child
+#                                      #   process; not assignable
+#     vmsg(V, "select"          ) : n  # Produce n if input is ever
+#                                      #   pending from stdout of child
+#                                      #   TODO determine when it's TRUE
+#     vmsg(V, "dispose"         ) : i  # Terminate child process; produ-
+#                                      #   cing exit code
+#   - Extensions to VNom state:
+#     buf_in  - base filename for baton handling data to child stdin
+#     buf_out - base filename for baton handling data from child stdout
+#     cmd     - system_nowait command string, minus baton pipes
+#     status  - "running" | "closed" | &null (disposed)
+#     whichme - path to current executable
+#     Cexit   - co-expression producing child's exit code; otherwise, &null
+#     Csend   - co-expression providing stdin to child
+#     Crecv   - co-expression receiving stdin from child
+#
+############################################################################
+#
+# Note that this code specifically assumes that baton_flatware can and will
+# intercept child-invocations of the executable to stream to/from batons.
+# For example, assuming that sqlite3 is on your PATH:
+#
+#   $include "fileDirIo.icn"
+#   $include "batonsys.icn"
+#   $define PLUGH  "A hollow voice says \"plugh\"."
+#   $define PLOVER "end of SQLite result list"
+#   procedure main(args)
+#     local batonsys
+#     local chunk
+#     # handle calls to baton_main; does not return; kind of like a fork...
+#     baton_flatware(args)
+#     # create object to manage batonsys
+#     batonsys :=
+#       baton_system("sysbaton", "sqlite3 -batch -json", &current, &current)
+#     # Send a query to SQLite
+#     vmsg(batonsys, "send", "select 'plugh' as xyzzy;")
+#     # Send "[]" to SQLite to mark end-of-output
+#     vmsg(batonsys, "send", ".print '[]'")
+#     # Retrieve lines until end-of-output mark (or closed pipe)
+#     while chunk := vmsg(batonsys, "receive")
+#       do
+#         case chunk of {
+#           "[{\"xyzzy\":\"plugh\"}]" : write(PLUGH)
+#           "[]" : break write(PLOVER)
+#           default : write(chunk)
+#           }
+#     write(&errout, "dispose produces ", image(vmsg(batonsys, "dispose")))
+#   end
+#
+############################################################################
+#
+# Requires:
+#   - preprocessor
+#   - $include "baton_main.icn"
+#     - delegation via baton_flatware
+#     - baton_main.icn includes baton_main.icn
+#   - $include "fileDirIo.icn"
+#   - $include "vnom.icn"
+#     - vnom.icn includes lindel.icn
+#
+############################################################################
+#
+# Preprocessor symbols:
+#   - VNOM (if not previously defined), defined when "vnom.icn" is included
+#   - BATON_MAIN (if not previously defined), defined when "baton_main.icn"
+#     is included
+#   - BATONSYS_HANDSHAKE_TIMEOUT (if not previously defined), specifies
+#     approximate number of seconds to await baton handshake
+############################################################################
+#
+# Links: none
+#
+############################################################################
+
+$ifndef VNOM
+# including vnom.icn includes lindel.icn as well
+$include "vnom.icn"
+$endif # VNOM
+
+$ifndef BATON_MAIN
+# including baton_main.icn includes baton.icn as well
+$include "baton_main.icn"
+$endif # BATON_MAIN
+
+$ifndef BATONSYS_HANDSHAKE_TIMEOUT
+  $define BATONSYS_HANDSHAKE_TIMEOUT 5.0
+$endif # BATONSYS_HANDSHAKE_TIMEOUT
+
+global baton_system_self
+
+# baton_system(basename:s, cmd:s, stdin:C, stdout:C) : BatonSys
+procedure baton_system(basename, cmd, stdin, stdout)
+  local batonsys, C_in, C_out
+  /stdin := &current
+  /stdout := &current
+  # construct unintialized "BatonSys" VNom
+  batonsys := VNomBatonSysCtor(, , basename, , , "BatonSys") | fail
+  vmsg(batonsys, "create", cmd, stdin, stdout)
+  return batonsys
+end
+
+# VNomBatonSysCtor - VNom constructor for data exchange with another process
+# - ID is path to baton base filename; hence, it is required
+# VNomCtor(Original:T, Type:s, ID:s, Metatable:T, Disposable:s, Kind:s) #:V
+procedure VNomBatonSysCtor(Original, Type, ID, Metatable, Disposable, Kind)
+  local V, MT
+  # This should only need to be run initially, except when baton_system_self
+  # is redefined as null.
+  if /baton_system_self
+    then {
+      baton_crowbar()
+      baton_system_self := &progname
+      if not (
+          &features == "MS Windows" |
+          path_separator() == baton_system_self[1]
+          )
+        then baton_system_self := "." || path_separator() || &progname
+      baton_system_self ||:= " baton_main "
+      }
+  V := vnew(
+    Original,          # Accept Original:n|T|V; "copy-constuctor" behavior
+    Type,              # Accept Type:s
+    \ID,               # Accept ID:s if one is supplied, otherwise fail
+    Metatable,         # Accept metatable:T if one is supplied
+    "yes",             # ignore input parameter because disposal is needed
+    \Kind | "BatonSys" # Kind, defaults to "BatonSys"
+    ) | fail
+  #----- PROPERTIES (key-value pairs) -----
+  every vmsg(V, "put", !["Cexit", "Crecv", "Csend", "cmd", "status"], &null)
+  vmsg(V, "put", "buf_in" , ID || "_in" )
+  vmsg(V, "put", "buf_out", ID || "_out")
+  vmsg(V, "put", "whichme", baton_system_self  )
+  #----- MESSAGE HANDLERS -----
+  MT := V[V, "Mttbl"]
+  MT["create" ] := VNomBatonSysMesg
+  MT["dispose"] := VNomBatonSysMesg
+  MT["send"   ] := VNomBatonSysMesg
+  MT["receive"] := VNomBatonSysMesg
+  MT["select" ] := VNomBatonSysMesg
+  # produce constructed object
+  return V
+end
+
+# VNomBatonSysMesg - a VNom message handler
+procedure VNomBatonSysMesg(args[])
+  local V, message, idx                   # args[1:3]
+  local arg4, arg5
+  local state                             # list of keys of V
+  local properties                        # map property name:s to X
+  local metamethod                        # possibly override this proc.
+  local val                               # pulled or popped val
+  local nargs                             # "excess" args beyond first two
+
+  if *args < 2 then stop("*args < 2")     # need at least V and message
+  nargs := *args - 2                      # count of args beyond V and msg
+  V := args[1]                            # extract VNom from args
+  message := args[2]                      # extract message from args
+  metamethod := V[V, "Mttbl", message]    # extract metamethod from VNom
+  suspend if (\metamethod ~=== VNomBatonSysMesg)
+    then metamethod ! args                # Invoke implementation elsewhere
+    else {                                # This proc. handles msg.
+      properties := V[V]                  # retrieve properties T from V
+      state := properties["State"]        # retrieve state L from props. T
+      case nargs of {
+        3 : case message of {             # message handlers taking 3 args
+          "create" : {                  # "create" message handler
+            arg4 := args[4]
+            arg5 := args[5]
+
+            # ensure start with a clean slate
+            system(V["whichme"]   || " clean "  || V["buf_in"])
+            system(V["whichme"]   || " clean "  || V["buf_out"])
+
+            # Exchange data with external process via batons.
+            #   Launch process in background; if process dies, no SIGPIPE
+            #   can reach us (see: https://unix.stackexchange.com/a/84828)
+            #   which is good because Icon does not catch signals.
+            V["Cexit"] :=
+              system_nowait(
+                "( "         ||
+                V["whichme"] || " read "  || V["buf_in"]  ||
+                " || "       ||
+                V["whichme"] || " clean " || V["buf_in"]  ||
+                ") | "       ||
+                args[3]      || " | "     ||
+                "( "         ||
+                V["whichme"] || " write " || V["buf_out"] ||
+                " || "       ||
+                V["whichme"] || " clean " || V["buf_out"] ||
+                ")"
+                )
+
+            # Set up baton for standard input into process ...
+            V["Csend"] :=
+              case type(arg4 := args[4]) of {
+                "file" :
+                  create baton(
+                    "write",
+                    V["buf_in"],
+                    create !arg4
+                    )
+                "co-expression" :
+                  create baton(
+                    "write",
+                    V["buf_in"],
+                    arg4
+                    )
+                default: fail
+                }
+
+            # Set up baton for standard output from process ...
+            V["Crecv"] :=
+              case type(arg5 := args[5]) of {
+                "file" :
+                  create baton(
+                    "read",
+                    V["buf_out"],
+                    create while write(arg5, @&source),
+                    ,
+                    BATONSYS_HANDSHAKE_TIMEOUT
+                    )
+                "co-expression" :
+                  create baton(
+                  "read",
+                  V["buf_out"],
+                  arg5,
+                  ,
+                  BATONSYS_HANDSHAKE_TIMEOUT
+                  )
+                default: {
+                  write(&errout, "arg5 invalid: ", image(arg5))
+                  fail
+                  }
+                }
+            # ... and activate output baton so that it can receive values
+            @V["Csend"]
+            V["status"] := "running"
+            V["Cexit"]
+            }
+          default : fail
+          }
+        1 : case message of {             # message handlers taking 1 args
+          "send" : {                    # "send" message handler
+            args[3] @V["Csend"] | fail # send message to child
+            &null
+            }
+          default : fail
+          }
+        0 : case message of {             # message handlers taking 0 args
+          "select" :                        # "select" message handler
+            baton(
+              "select",
+              V["buf_out"],
+              ,
+              BATONSYS_HANDSHAKE_TIMEOUT
+              )
+          "receive" : @V["Crecv"]           # "receive" message handler
+          "dispose" : {                     # "dispose" message handler
+            # Close the output baton
+            char(4) @V["Csend"]
+            # Close the input baton to clean up baton files
+            @V["Crecv"]
+            # Wait (briefly) for process exit and retrieve exit code
+            every 1 to 5
+              do {
+                val := @V["Cexit"]
+                if /val
+                  then delay(10 * BATON_TIMEOUT_MS) # defined in baton.icn
+                  else break val # value produced by "dispose"
+                }
+            if \val
+              then {
+                # ensure end with a clean slate
+                system(V["whichme"]   || " clean "  || V["buf_in"])
+                system(V["whichme"]   || " clean "  || V["buf_out"])
+                }
+            # Update status
+            V["status"] := &null
+            val
+            }
+          default : fail
+          }
+        default : fail
+        }
+      }
+end
+$endif # BATONSYS

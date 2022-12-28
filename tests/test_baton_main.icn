@@ -1,0 +1,471 @@
+# test_baton_main.icn
+
+# Note that this test program creates, runs, and removes translations
+#   of baton_main.icn
+
+# assume LPATH includes ..
+
+$ifndef FALSE
+  $define FALSE &fail
+$endif
+
+$ifndef TRUE
+  $define TRUE (not &fail)
+$endif
+
+#$define FILEDIRIO_TRACE TRUE & write
+$define FILEDIRIO_TRACE FALSE & write
+
+$include "fileDirIo.icn"
+
+#$define BATON_MAIN_TRACE TRUE & write
+$define BATON_MAIN_TRACE FALSE & write
+
+#$define BATON_TRACE if TRUE then write
+$include "baton.icn"
+
+# define preprocessor symbol `baton_main` so that it won't get redefined
+#   as `main` by ../baton_main.icn
+$define baton_main baton_main
+$include "baton_main.icn"
+
+$define PLUGH "A hollow voice says \"plugh\"."
+$define PLOVER "end of SQLite result list"
+
+
+procedure main(args)
+  static win_unicon, portableIcon, f, fsend, frecv, Crslt, line, rslt
+  local local_tmp
+  initial {
+    win_unicon := (&features == "MS Windows NT", &features == "POSIX")
+    portableIcon := (
+      &features == "MS Windows",
+      &features == "Cygwin"
+      , not (&features == "MS Windows NT")
+      , not (&features == "POSIX")
+      , not (&features == "UNIX")
+      , 1
+      )
+    }
+
+  # handle calls to baton_main; kind of like a fork...
+  baton_flatware(args)
+
+  BATON_MAIN_TRACE(&errout, "&progname is ", &progname)
+  if \win_unicon
+    then { # only for Unicon on Microsoft Windows NT
+      # -------------------- Unicon on Microsoft Windows NT --------------------
+      f := "set LPATH=..&& unicon -u -s -o baton.exe ../baton_main.icn"
+      BATON_MAIN_TRACE(&errout, "from MS Windows Unicon: ", f)
+      system(f)
+      f := "type test_baton.dat | baton.exe write foobar"
+      BATON_MAIN_TRACE(&errout, f)
+      system(f, , , , "nowait")
+      delay(100)
+      f := "cmd /c baton.exe read foobar"
+      BATON_MAIN_TRACE(&errout, f)
+      system(f)
+      if not which("sqlite3")
+        then {
+          write(&errout,
+            "    sqlite3 not detected - skipping testing specific to SQLite")
+          write(PLUGH)
+          write(PLOVER)
+          write("SQLite exit code: 0")
+          }
+        else {
+          write(&errout,
+            "    sqlite3 detected but testing specific to SQLite has not been implemented")
+          }
+      BATON_MAIN_TRACE(&errout, "remove(\"baton.exe\")")
+      remove("baton.exe")
+      } # only for Unicon on Microsoft Windows NT
+
+  else if \portableIcon
+    then { # portableIcon on Microsoft Windows NT
+      # -------------------- portableIcon on Microsoft Windows NT --------------------
+      f := "start \"baton writer\" /b cmd /c \"type test_baton.dat | " ||
+        &progname || " baton_main write foobar\""
+      BATON_MAIN_TRACE(&errout, f)
+      system(f)
+      #ACE f := "baton read foobar"
+      f := &progname || " baton_main read foobar"
+      BATON_MAIN_TRACE(&errout, f)
+      f := system(f)
+      BATON_MAIN_TRACE(&errout, "... returned from system(): ", f)
+
+      if f := open("baton_main_build.icn", "w")
+        then {
+          every
+            line := ![
+              "$define baton_main main",
+              "$include \"baton_main.icn\""
+              ]
+            do
+              write(f, line)
+          close(f)
+          f := "icont -u -s -o baton.bat baton_main_build.icn"
+          BATON_MAIN_TRACE(&errout, "from portableIcon: ", f)
+          if 0 != system(f)
+            then {
+              write("test_baton_main: FATAL ERROR - failed to compile baton_main")
+              stop("test_baton_main: FATAL ERROR - failed to compile baton_main")
+              }
+            remove("baton_main_build.icn")
+
+          # case one A: Pass one line of data from output pipe to input pipe.
+          frecv := open("baton read  buf_in", "rp")
+          fsend := open("baton write buf_in",  "wp")
+          write(fsend, "hello world from " || &progname)
+          flush(fsend)
+          line := read(frecv)
+          BATON_MAIN_TRACE(&errout, line)
+          close(fsend)
+          close(frecv)
+
+          # case one B: Pass one line of data from output pipe to input baton.
+          fsend := open("baton write buf_in",  "wp")
+          @(
+            f := create {
+              if baton("select", "buf_in", , , BATON_PATIENCE/1000.0)
+                then write("... unexpected input initially in buf_in")
+                else BATON_MAIN_TRACE(&errout, "... as expected, buf_in initially empty")
+              write(fsend, "goodbye world from " || &progname)
+              flush(fsend)
+              line := @&source
+              BATON_MAIN_TRACE(&errout, line)
+              BATON_MAIN_TRACE(&errout, "... attempting to send EOT")
+              write(fsend, char(4))
+              }
+            )
+          baton("read", "buf_in", f)
+          if baton("select", "buf_in", , , BATON_PATIENCE/1000.0)
+            then  {
+              write("... unexpected input remaining in buf_in")
+              system("dir buf_in*")
+              write("... buf_in is:")
+              system("type buf_in")
+              write()
+              }
+            else BATON_MAIN_TRACE(&errout, "... as expected, buf_in empty")
+          #ACE BATON_MAIN_TRACE(&errout, "... attempting to send EOT")
+          #ACE write(fsend, char(4))
+          BATON_MAIN_TRACE(&errout, "... attempting to close fsend")
+          close(fsend)
+          BATON_MAIN_TRACE(&errout, "... back and badder than ever")
+
+          # case one C: Pass one line of data from output pipe to input baton.
+          fsend := open("baton write buf_in",  "wp")
+          BATON_MAIN_TRACE(&errout, "case one C checkpoint 0: &current is ", image(&current))
+          local_tmp := &current
+          BATON_MAIN_TRACE(&errout, "case one C checkpoint 1: local_tmp is ", image(local_tmp))
+          f := create baton("read", "buf_in", local_tmp)
+          BATON_MAIN_TRACE(&errout, "case one C checkpoint 2: f is ", image(f))
+          if baton("select", "buf_in", , , BATON_PATIENCE/1000.0)
+            then write("--- unexpected input initially in buf_in")
+            else BATON_MAIN_TRACE(&errout, "--- as expected, buf_in initially empty")
+
+          write(fsend, "wish-you-were-here world from " || &progname)
+          write(fsend, char(4))
+          flush(fsend)
+          &trace := 0
+          BATON_MAIN_TRACE(&errout, "case one C checkpoint 3: f is ", image(f))
+          line := @f
+          BATON_MAIN_TRACE(&errout, line)
+          BATON_MAIN_TRACE(&errout, "case one C checkpoint 4: f is ", image(f))
+          &trace := 0
+
+          BATON_MAIN_TRACE(&errout, "--- attempting to send EOT")
+          write(fsend, char(4))
+          BATON_MAIN_TRACE(&errout, "--- cuing reader to flush buffer")
+          @f
+
+          if baton("select", "buf_in", , , BATON_PATIENCE/1000.0)
+            then  {
+              write("--- unexpected input remaining in buf_in")
+              system("dir buf_in*")
+              write("--- buf_in is:")
+              system("type buf_in")
+              write()
+              }
+            else BATON_MAIN_TRACE(&errout, "--- as expected, buf_in empty")
+          BATON_MAIN_TRACE(&errout, "--- attempting to close fsend")
+          close(fsend)
+          BATON_MAIN_TRACE(&errout, "--- back and badder than ever")
+          }
+
+      if not which("sqlite3")
+        then {
+          # case two A: Exchange both input and output with external process using batons.
+          write(&errout, "    sqlite3 not detected - skipping testing specific to SQLite")
+          BATON_MAIN_TRACE(&errout, "--- simulating output (begin)")
+          BATON_MAIN_TRACE(&errout, PLUGH)
+          BATON_MAIN_TRACE(&errout, PLOVER)
+          BATON_MAIN_TRACE(&errout, "SQLite exit code: 0")
+          write(PLUGH)
+          write(PLOVER)
+          write("SQLite exit code: 0")
+          BATON_MAIN_TRACE(&errout, "--- simulating output (end)")
+          }
+        else {
+          write(&errout, "    sqlite3 detected - running testing specific to SQLite")
+          # Launch process in background; if process dies, no SIGPIPE
+          #   can reach us (see: https://unix.stackexchange.com/a/84828)
+          #   which is good because Icon does not catch signals.
+          Crslt :=
+            system_nowait(
+              &progname || " baton_main read buf_in | " ||
+              "sqlite3 -batch -json | " ||
+              &progname || " baton_main write buf_out"
+              )
+
+          local_tmp := &current
+          # Set up baton for standard output of process
+          frecv := create baton("read", "buf_out", local_tmp)
+          # Set up baton for standard input of process
+          # and activate baton so that it can receive a value
+          @( fsend := create baton("write", "buf_in", local_tmp) )
+
+          # Send a query to SQLite, not producing any output
+          "select 'plover' where 1 = 0;" @fsend
+          # Send a query to SQLite, producing output
+          "select 'plugh' as xyzzy;" @fsend
+          # Retrieve lines until end-of-output mark (or closed pipe)
+          while line := @frecv
+            do
+              if line == "[{\"xyzzy\":\"plugh\"}]"
+                then break write(PLUGH)
+                else write(line)
+          # Send "[]" to SQLite to mark end-of-output
+          ".print '[]'" @fsend
+          # Retrieve lines until end-of-output mark (or closed pipe)
+          while line := @frecv
+            do
+              if line == "[]"
+                then break write(PLOVER)
+                else write(line)
+          # Close the output baton
+          char(4) @fsend
+          # Close the input baton to clean up baton files.
+          @frecv
+
+          # Wait (briefly) for process exit and retrieve exit code.
+          every 1 to 10
+            do {
+              write("SQLite exit code: " || image(\(f := @Crslt)))
+              if /f
+                then delay(100)
+                else break
+              }
+
+          # case two B: Exchange both input and output with external process using pipes.
+          # Set up buffer for standard input of process
+          fsend := open("baton write buf_in",  "wp")
+          # Set up buffer for standard output of process
+          frecv := open("baton read  buf_out", "rp")
+          # Launch process in background; if process dies, no SIGPIPE
+          #   can reach us (see: https://unix.stackexchange.com/a/84828)
+          #   which is good because Icon does not catch signals.
+          Crslt :=
+            system_nowait(
+              "baton read buf_in | " ||
+              "sqlite3 -batch -json | " ||
+              "baton write buf_out"
+              )
+
+          # Send a query to SQLite, not producing any output
+          write(fsend, "select 'plover' where 1 = 0;")
+          # Send a query to SQLite to mark end-of-output
+          write(fsend, "select 'plugh' as xyzzy;")
+          # Retrieve lines until end-of-output mark (or closed pipe)
+          while line := read(frecv)
+            do
+              if line == "[{\"xyzzy\":\"plugh\"}]"
+                then break BATON_MAIN_TRACE(&errout, PLUGH)
+                else BATON_MAIN_TRACE(&errout, line)
+          # It is polite to send a ".quit" command to SQLite here,
+          #   but this has not apparent effect on normal termination.
+          #write(fsend, ".quit")
+          # Flushing the stream has no apparent effect on termination.
+          #flush(fsend)
+          # Close the input and output streams and fetch the exit code.
+          close(fsend)
+          close(frecv)
+
+          # Wait (briefly) for process exit and retrieve exit code.
+          every 1 to 10
+            do {
+              BATON_MAIN_TRACE(&errout, "SQLite exit code: " || image(\(f := @Crslt)))
+              if /f
+                then delay(100)
+                else break
+              }
+          }
+
+      if write === BATON_MAIN_TRACE
+       then system("dir /od | findstr buf 1>&2")
+      BATON_MAIN_TRACE(&errout, "... remove(\"baton.exe\")")
+      remove("baton.exe")
+      BATON_MAIN_TRACE(&errout, "... remove(\"baton.bat\")")
+      remove("baton.bat")
+      } # end portableIcon on Microsoft Windows NT
+
+    else {
+      # -------------------- POSIX presumably --------------------
+      f := "cat test_baton.dat | ." || path_separator() || &progname ||
+                " baton_main  write foobar"
+      BATON_MAIN_TRACE(&errout, "testing system_nowait(\"", f, "\")")
+      if Crslt := system_nowait(f)
+        then {
+          # Run reader and wait for exit
+          f := "." || path_separator() || &progname ||
+                " baton_main read foobar"
+          BATON_MAIN_TRACE(&errout, "testing system(\"", f, "\")")
+          system(f)
+          # Wait (briefly) for process exit and retrieve exit code.
+          every 1 to 10
+            do {
+              rslt := @Crslt
+              FILEDIRIO_TRACE(
+                &errout,
+                "... system_nowait(\"", f, "\") exit code: ",
+                image(rslt)
+                )
+              if /rslt
+                then delay(100)
+                else break
+              }
+          }
+
+      if (
+        write === BATON_MAIN_TRACE,
+        f := open("baton_main_build.icn", "w")
+        )
+        then {
+          every
+            line := ![
+              "$define baton_main main",
+              "$include \"baton_main.icn\""
+              ]
+            do
+              write(f, line)
+          close(f)
+          f := "icont -u -s -o baton baton_main_build.icn"
+          BATON_MAIN_TRACE(&errout, "from Unix icon: ", f)
+          system(f)
+          if not close(open("baton"))
+            then stop("failed to find or build baton")
+
+          # case two B: Exchange both input and output with external process using pipes.
+          # Set up buffer for standard input of process
+          fsend := open("./baton write buf_in",  "wp")
+          # Set up buffer for standard output of process
+          frecv := open("./baton read  buf_out", "rp")
+          # Launch process in background; if process dies, no SIGPIPE
+          #   can reach us (see: https://unix.stackexchange.com/a/84828)
+          #   which is good because Icon does not catch signals.
+          Crslt :=
+            system_nowait(
+              #"(./baton read buf_in || ./baton clean buf_in) | " ||
+              "(./baton read buf_in) | " ||
+              "sqlite3 -batch -json | " ||
+              #"(./baton write buf_out || ./baton clean buf_out)"
+              "(./baton write buf_out)"
+              )
+          # Send a query to SQLite, not producing any output
+          write(fsend, "select 'plover' where 1 = 0;")
+          # Send a query to SQLite to mark end-of-output
+          write(fsend, "select 'plugh' as xyzzy;")
+          # Retrieve lines until end-of-output mark (or closed pipe)
+          while line := read(frecv)
+            do
+              if line == "[{\"xyzzy\":\"plugh\"}]"
+                then break BATON_MAIN_TRACE(&errout, PLUGH)
+                else BATON_MAIN_TRACE(&errout, line)
+          # It would be polite to send .quit before EOT...
+          BATON_MAIN_TRACE(&errout, "send .quit 0")
+          write(fsend, ".quit") | write(&errout, "send .quit 0 failed")
+          BATON_MAIN_TRACE(&errout, "send EOT 0")
+          write(fsend, char(4)) | write(&errout, "send EOT failed")
+          flush(fsend)
+          BATON_MAIN_TRACE(&errout, "close frecv")
+          close(frecv)
+          BATON_MAIN_TRACE(&errout, "close fsend")
+          close(fsend)
+          BATON_MAIN_TRACE(&errout, "wait for exit code")
+          # Wait (briefly) for process exit and retrieve exit code.
+          every 1 to 10
+            do {
+              BATON_MAIN_TRACE(&errout, "SQLite exit code: " || image(\(f := @Crslt)))
+              if /f
+                then delay(100)
+                else break
+              }
+          }
+
+      # case two A: Exchange both input and output with external process using batons.
+      if not which("sqlite3")
+        then {
+          write(&errout, "    sqlite3 not detected - skipping testing specific to SQLite")
+          write(PLUGH)
+          write(PLOVER)
+          write("SQLite exit code: 0")
+          }
+        else {
+          write(&errout, "    sqlite3 detected - running testing specific to SQLite")
+          # Launch process in background; if process dies, no SIGPIPE
+          #   can reach us (see: https://unix.stackexchange.com/a/84828)
+          #   which is good because Icon does not catch signals.
+          Crslt :=
+            system_nowait(
+              "." || path_separator() || &progname ||
+                " baton_main read buf_in | " ||
+              "sqlite3 -batch -json | " ||
+              "." || path_separator() || &progname ||
+                " baton_main write buf_out"
+              )
+
+          local_tmp := &current
+          # Set up baton for standard output of process
+          frecv := create baton("read", "buf_out", local_tmp)
+          # Set up baton for standard input of process
+          # and activate baton so that it can receive a value
+          @( fsend := create baton("write", "buf_in", local_tmp) )
+
+          # Send a query to SQLite, not producing any output
+          "select 'plover' where 1 = 0;" @fsend
+          # Send a query to SQLite, producing output
+          "select 'plugh' as xyzzy;" @fsend
+          # Retrieve lines until end-of-output mark (or closed pipe)
+          while line := @frecv
+            do
+              if line == "[{\"xyzzy\":\"plugh\"}]"
+                then break write(PLUGH)
+                else write(line)
+          # Send "[]" to SQLite to mark end-of-output
+          ".print '[]'" @fsend
+          # Retrieve lines until end-of-output mark (or closed pipe)
+          while line := @frecv
+            do
+              if line == "[]"
+                then break write(PLOVER)
+                else write(line)
+          # Close the output baton
+          char(4) @fsend
+          # Close the input baton to clean up baton files.
+          @frecv
+
+          # Wait (briefly) for process exit and retrieve exit code.
+          every 1 to 10
+            do {
+              write("SQLite exit code: " || image(\(f := @Crslt)))
+              if /f
+                then delay(100)
+                else break
+              }
+          }
+
+      BATON_MAIN_TRACE(&errout, "remove(\"baton\")")
+      remove("baton")
+      } # POSIX presumably
+end

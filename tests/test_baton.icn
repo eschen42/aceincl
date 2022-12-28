@@ -1,0 +1,93 @@
+# test_baton.icn
+
+# Note that, except for on Unix, the translated test_baton program,
+#   invoked with no arguments, creates children from the translated
+#   test_baton program itself but invoked with a read, write, or clean arg.
+
+$ifndef _UNIX
+  $ifdef _MS_WINDOWS
+    $ifdef _MS_WINDOWS_NT # may be Windows Unicon
+      $define BATON_PLATFORM "MS Windows NT"
+      $define BATON_INVOKE pwd() || path_separator() || "test_baton.exe "
+    $else                 # may be portableIcon
+      $define BATON_PLATFORM "MS Windows"
+      $define BATON_INVOKE  pwd() || path_separator() || "test_baton "
+    $endif
+  $else
+    $define BATON_PLATFORM "neither Unix nor MS Windows NT"
+    $define BATON_INVOKE  "." || path_separator() || "test_baton.exe "
+  $endif
+$else
+  $define BATON_PLATFORM "Unix"
+  $define BATON_INVOKE  "icon -P '$include \"test_baton.icn\"'"
+$endif
+
+# stress-test; BATON_PATIENCE defaults to 2 in baton.icn
+$define BATON_PATIENCE 1
+
+$ifdef UNDEFINED
+  $ifndef FALSE
+    $define FALSE &fail
+  $endif
+
+  $ifndef TRUE
+    $define TRUE (not &fail)
+  $endif
+
+  $define BATON_TRACE if TRUE then write
+$endif # UNDEFINED
+
+$ifndef BATON_CWARN
+  #$define BATON_CWARN create repeat @&source | @&main
+  $define BATON_CWARN create repeat write(&errout, "Cwarn: ", \@&source | "") | @&main
+  #$define BATON_CWARN create repeat BATON_TRACE(&errout, "Cwarn: ", \@&source | "") | @&main
+$endif # BATON_CWARN
+
+# assume that LPATH includes ..
+$include "baton.icn"
+$include "fileDirIo.icn"
+
+procedure main(args)
+  local f_in, f_write, f_read, rslt
+  if 0 = *args
+    then {
+      # this is the test case;
+      #   get data, launch pipeline, and produce results
+      f_in := open("test_baton.dat", "r") | 
+        stop("failed to open input file \"test_baton.dat\"")
+      # - instantiate child pipes
+      BATON_TRACE(&errout, "test_baton: invoke \"", BATON_INVOKE || " write test_baton_buf", "\"")
+      f_write := open(BATON_INVOKE || " write test_baton_buf", "wp")
+      BATON_TRACE(&errout, "test_baton: invoke \"baton_main read\"")
+      f_read  := open(BATON_INVOKE || " read  test_baton_buf", "rp")
+      BATON_TRACE(&errout, "test_baton: invoked \"baton_main read\"")
+      # - put each line into write pipe and retrieve it from read pipe
+      every write(f_write, !f_in) do {
+        delay(BATON_PATIENCE)
+        BATON_TRACE(&errout, "*** test_baton: reading fread")
+        write(&output, read(f_read) | "*** test_baton: read(f_read) failed")
+        BATON_TRACE(&errout, "*** test_baton: returned from reading fread")
+        }
+      # - close the pipes (f_write before f_read so it does not block)
+      every image_close(f_in | f_write | f_read)
+      # - run clean which does nothing substantial unless reader or writer failed
+      BATON_TRACE(&errout, "*** test_baton: invoking baton clean")
+      baton("clean", "test_baton_buf")
+      # - farewell
+      BATON_TRACE(&errout, "baton: main([]) exits now")
+      exit(0)
+      }
+  # program was invoked from test case; call baton(args[1], args[2])
+  if rslt := (baton ! args)
+    then
+      if args[1] == "write" | rslt ~== "baton read: received EOT"
+        then write("Error for ", args[1], " - \"", rslt, "\"")
+    
+  BATON_TRACE(&errout, "baton ", args[1], " exits now")
+  exit(0)
+end
+
+procedure image_close(f)
+  BATON_TRACE(&errout, "test_baton: closing ", image(f))
+  close(f)
+end

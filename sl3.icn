@@ -1,0 +1,702 @@
+$ifndef SL3
+$define SL3
+############################################################################
+#
+# File: sl3.icn
+#
+# Subject: sl3.icn - an Icon interface to sqlite3 command line interface
+#
+# Author: Arthur Eschenlauer (https://orcid.org/0000-0002-2882-0508)
+#
+# Date: 28 December 2022
+#
+# URL: https://chiselapp.com/user/eschen42/repository/aceincl/file?name=sl3.icn
+#
+############################################################################
+#
+# This file is in the public domain. Art Eschenlauer has waived all
+# copyright and related or neighboring rights to:
+#   sl3.icn - an Icon interface to sqlite3 command line interface
+# For details, see:
+#   https://creativecommons.org/publicdomain/zero/1.0/
+#
+# If you require a specific license and public domain status is not
+# sufficient for your needs, please substitute the MIT license (see below),
+# bearing in mind that the copyright "claim" is solely to meet your require-
+# ments and does not imply any restriction on use or copying by the author:
+#
+#   Copyright (c) 2022, Arthur Eschenlauer
+#
+#   Permission is hereby granted, free of charge, to any person obtaining
+#   a copy of this software and associated documentation files (the
+#   "Software"), to deal in the Software without restriction, including
+#   without limitation the rights to use, copy, modify, merge, publish,
+#   distribute, sublicense, and/or sell copies of the Software, and to
+#   permit persons to whom the Software is furnished to do so, subject
+#   to the following conditions:
+#
+#   The above copyright notice and this permission notice shall be
+#   included in all copies or substantial portions of the Software.
+#
+#   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+#   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+#   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
+#   IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+#   CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+#   TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+#   SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+#
+############################################################################
+#
+# sl3.icn defines an interface to the sqlite3 command line interface,
+# which is described in detail at https://sqlite.org/cli.html
+#
+# No generalized process interface exists in the basic Icon implementation
+# and library that would allow access to both the standard input and the
+# standard output of a child process, this interface uses the `baton`
+# inteface via `baton.icn`, `baton_main.icn`, and `batonsys.icn` to hand
+# data back and forth between Icon and sqlite3 without resorting to such
+# platform-specific devices as FIFOs or named-pipes.
+#
+# For convenience, if the symbol "sl3" is not defined by the preprocessor
+# before "sl3.icn" is included, then it is defined as "sl3msg", which
+# is the actual identifier for the implementation here; this header
+# assumes this definition.
+#
+# sl3new(path, options, errC) : VNom (a SQLite3 connection)
+#   - This is a synonym for sl3(&null, "open", path, options, errC)
+#   - See below for details of the "open" message.
+#
+# sl3(conn:SQLite3, message, arg1, arg2, arg3) : x
+#   - takes as its first argument, a "database connection" that is a
+#     "SQLite3" VNom (or &null when the message is "open").
+#   - takes as its second argument an operation message string, which is:
+#     - either one of "open" | "prepare" | "fetch" | "close"
+#     - or "the default key", a prepared statement or SQL string.
+#   - The value produced depends on the signature invoked.
+#
+# The signatures of sl3 messages are as follows:
+#
+#   sl3(&null, "open",      path,    options, errC ) : VNom (a SQLite3 conn)
+#   sl3(conn,  "prepare",   stmt                   ) : VNom (a prep_stmt)
+#   sl3(conn,  stmt:s,      parmL:L, errC          ) : n|fail
+#   sl3(conn,  prep_stmt:V, &null|x, errC          ) : n|fail
+#   sl3(conn,  "fetch"                             ) : VNom (a result row)
+#   sl3(conn,  "close",     errC                   ) : &null
+#
+# The behaviors of sl3 messages are as follows:
+#
+#   sl3(connection, "open", path, options, errC) : SQLite3
+#   - Opens a connection using a database path.
+#     - Produces a SQLite3 connection structure.
+#   - connection : &null
+#     - connection should be &null but is ignored.
+#     - Construct and produce new SQLite3 instance.
+#   - path : s (or &null)
+#     - Path to (possibly not-yet-existing) sqlite3 database.
+#     - When &null, path defaults to ":memory:", an in-memory temp database.
+#   - options : s (or &null)
+#     - Additional options to be passed on the command line to sqlite3.
+#     - When &null, only standard options will be passed.
+#   - errC : C
+#     - Co-expression to which error message strings will be transmitted.
+#     - When &null, error message strings will not be transmitted.
+#
+#   sl3(connection, "prepare", stmt) : VNom (as specified here)
+#   - Purge previous results (by fetching all, if any).
+#   - Parse SQL statement containing placeholders.
+#     - Fails when connection is not open;
+#     - otherwise, produces a VNom having:
+#       - ordered parameter names for the prepared statement (param "?")
+#       - parameter "?" (the last parameter), a string containing a
+#         parameterized SQL statement compatible with sqlite3
+#     - connection : SQLite3
+#       - an open database connection
+#     - stmt : s
+#       - SQL text including placeholders; this is assigned to parameter "?"
+#       - Please provide named placeholders appropriately, as described at:
+#         https://sqlite.org/cli.html#sql_parameters
+#
+#   sl3(connection, stmt:s,      parmL:L, errC) : n|fail
+#   sl3(connection, prep_stmt:V, &null|x, errC) : n|fail
+#   - Purge previous results (by fetching all, if any).
+#   - Execute a SQL statement.
+#     - Produces &null if successful; otherwise fails.
+#     - On failure, a string is transmitted to errC (if not &null)
+#     - connection : SQLite3
+#       - open database connection
+#     - stmt:s | prep_stmt:V
+#       - s (for SQL text; params, if any, taken from parmL)
+#       - V (result from "prepare" message; parmL is ignored)
+#     - parmL : L
+#       - list of parameters for a prepared statement,
+#         ignored unless prep_stmt is a string
+#     - errC : C
+#       - Co-expression to which error message strings will be transmitted.
+#       - When &null, error message strings will not be transmitted.
+#
+#   sl3(connection, "fetch") : VNom (representing a result row)
+#   - Fetch a result from the result list.
+#     - Produce one result row (as a VNom) from the result list.
+#     - This is a VNom so that fields ordered independently of their names.
+#   - connection : SQLite3
+#     - open database connection
+#
+#   sl3(connection, "close", errC) : &null
+#   - Purge previous results (by fetching all, if any).
+#   - Close and dispose connection.
+#     - Produces &null only when successful;
+#     - fails otherwise.
+#   - connection : SQLite3
+#     - open database connection
+#   - errC : C
+#     - Co-expression to which error message strings will be transmitted.
+#     - When &null, error message strings will not be transmitted.
+#
+# SQLite3 is an extension of VNom that implements the following extensions
+# to VNom state:
+#   - batonsys    : result from baton_system(...)
+#   - status      : "open" | "fetching" | &null (closed)
+#   - rows        : C producing rows; failing when rows are exhausted.
+#
+# The result mode for sqlite3 is json for deterministic parsing by this
+# routine; this parsing is internal but it implies that
+#   sl3(connection, stmt_or_prepstmt, parm_L, errC) : s # result status
+# must not change the result mode to something else (e.g., to use the
+# .output to format results in an output file) without changing it back.
+#
+############################################################################
+#
+# Requires:
+#   - preprocessor
+#   - pipes
+#   - system
+#   - $include "batonsys.icn"
+#     - this includes baton_main.icn and baton.icn
+#   - $include "fileDirIo.icn"
+#   - $include "jsonparse.icn"
+#   - $include "lindel.icn"
+#   - $include "vnom.icn"
+#   - calling baton_flatware(args) from main(args).
+#
+############################################################################
+#
+# Preprocessor symbols defined in this file:
+#   - SL3_TRACE if defined, should look like `write` or `&fail`
+#
+############################################################################
+#
+# Links: strings
+#
+############################################################################
+
+link strings
+# ref: https://www2.cs.arizona.edu/icon/library/src/procs/strings.icn
+# replacem(s, ...)
+#   Performs multiple replacements in the style of
+#   of replace(), where multiple argument pairs
+#   may be given, as in
+#     replacem(s, "a", "bc", "d", "cd")
+#   which replaces all "a"s with "bc"s
+#   and   replaces all "d"s with "cd"s.
+#   Replacements are performed one after another, not in parallel.
+# replace(s1, s2, s3)
+#   Replaces all occurrences of s2 in s1 by s3; fails when s2 is null.
+
+$ifndef _fileDirIo_
+  # need fileDirIo.icn for which, tmppath
+  $include "fileDirIo.icn"
+$endif
+
+$ifndef LINDEL
+  $include "lindel.icn"
+$endif
+
+$ifndef VNOM
+  $include "vnom.icn"
+$endif
+
+$ifndef JSONPARSE
+  $include "jsonparse.icn"
+$endif
+
+$ifndef BATONSYS
+  $include "batonsys.icn"
+$endif
+
+$ifndef sl3
+  $define sl3msg sl3
+$endif
+
+$ifndef _PIPES
+  $error "sl3.icn" requires pipes
+  fail
+$endif # _PIPES
+
+$ifndef SL3_TRACE
+  $define SL3_TRACE &fail
+  #$define SL3_TRACE write 
+$endif # SL3_TRACE
+
+# query result handler
+#   prerequisite: after sending DQL to db, send ".print '[]'"
+procedure sl3ReadResult(fin, errC)
+  local ob
+  ob := read(fin) || "\n"
+  # error messages are not JSON, so do not begin with square brackets
+  if not (ob[1] == "[")
+    then {
+      # trim off the newline when reporting the error message
+      ob[1:-1] @ \errC
+      fail
+      }
+  # handle a single-line result
+  if ob[-2] == "]"
+    then return 1(ob, sl3ReadEmptyResult(fin, errC))
+  # concatenate a multiple-line result
+  until not (ob ||:= (read(fin)||"\n")) do
+    if ob[-2] == "]"
+      then return 1(ob, sl3ReadEmptyResult(fin, errC))
+  "sl3ReadResult failed" @ \errC
+end
+
+# non-query non-result handler
+#   prerequisite: after sending DDL|DML|DCL to db, send ".print '[]'"
+#     write(fout, ".print '[]'",)
+procedure sl3ReadEmptyResult(batonsys, errC, noDotPrint)
+  local ob
+  while ob := vmsg(batonsys, "receive")
+    do
+      if ob == "[]"
+        then return
+  "sl3ReadEmptyResult failed" @ \errC
+end
+
+procedure sl3new(path, options, errC)
+  return sl3msg(&null, "open", path, options, errC)
+end
+
+procedure sl3msg(cnxn, command, arg1, arg2, arg3)
+  static sl3_path
+  local errC, chunk, unparsed, i
+  initial {
+    # initialize path to sqlite3; else, raise "program malfunction" error
+    if not sl3_path := which("sqlite3")
+      then runerr(500, "no path found to sqlite3")
+    }
+  if /command | (/cnxn, command ~=== "open") then fail
+  return case command of {
+    "open" : { # either reopen cnxn or open new cnxn
+      #   sl3(connection, "open", path, options, errC) : SQLite3
+      #   - Opens a connection using a database path.
+      #     - Produces a SQLite3 connection structure.
+      #   - connection : &null
+      #     - connection should be &null but is ignored.
+      #     - Construct and produce new SQLite3 instance.
+      #   - path : s (or &null)
+      #     - Path to (possibly not-yet-existing) sqlite3 database.
+      #     - When &null, path defaults to ":memory:", an in-memory temp
+      #       database.
+      #   - options : s (or &null)
+      #     - Additional options to be passed on the command line to sqlite3
+      #     - When &null, only standard options will be passed.
+      #   - errC : C
+      #     - Co-expression to which error message strings will be
+      #       transmitted.
+      #     - When &null, error message strings will not be transmitted.
+      cnxn :=
+        vnew(
+          &null,    # Original   - "default-constuctor" behavior
+          &null,    # Type       - default to Kind || typecount
+          &null,     # ID         - default to VNom_n; n is the table counter
+          &null,    # Metatable  - use default metatable
+          "yes",    # Disposable - this requires disposal via "close"
+          "SQLite3" # Kind       - set to SQLite3 for all instances
+          ) | fail
+      /arg1 := ":memory:" # open in-memory database
+      /arg2 := "" # options passed to command line before path to database
+      # it may be impossible to specify tcl output mode with switches
+      arg2 ||:= " -batch -json"
+      errC := arg3
+      # initialize keys; set values to &null
+      every vmsg(cnxn, "put", !["batonsys", "rows", "disposition"], &null)
+
+      # instantiate BatonSys for sqlite3 and abort on error
+      # baton_system(basename:s, cmd:s, stdin:C, stdout:C) : BatonSys
+
+      cnxn["batonsys"] :=
+        baton_system(
+          tmppath(),
+          "sqlite3 " || arg2 || " " || arg1,
+          &current,
+          &current
+          )
+
+      if \(@cnxn["batonsys", "Cexit"])
+        then {
+          sl3_transmit(
+            "batonsys constructor failed for sqlite3",
+            errC
+            )
+          runerr(500, "batonsys constructor failed for sqlite3")
+          }
+
+      # initial set-up for prepared statemeents
+      sl3msg(cnxn, ".param init")
+
+      # mark status as open
+      vmsg(cnxn, "put", "status", "open")
+      # return the database connection
+      cnxn
+      }
+
+    # sl3(connection, "close") : SQLite3
+    "close" : { # close cnxn
+      #   sl3(connection, "close", errC) : &null
+      #   - Purge previous results (by fetching all, if any).
+      #   - Close and dispose connection.
+      #     - Produces &null only when successful;
+      #     - fails otherwise.
+      #   - connection : SQLite3
+      #     - open database connection
+      #   - errC : C
+      #     - Co-expression to which error message strings will be
+      #       transmitted.
+      #     - When &null, error message strings will not be transmitted.
+      errC := arg1
+      if cnxn["status"] == "open" | "fetching"
+        then {
+          vmsg(
+            cnxn,
+            "put",
+            "disposition",
+            vmsg(cnxn["batonsys"], "dispose") # send "dispose" to batonsys
+            )
+          # set status to closed/disposed
+          cnxn["status"] := &null
+          }
+      # produce (closed) connection
+      cnxn
+      }
+
+    "prepare" : { # parse command; produce VNom
+      #   sl3(connection, "prepare", stmt) : VNom (as specified here)
+      #   - Purge previous results (by fetching all, if any).
+      #   - Parse SQL statement containing placeholders.
+      #     - Fails when connection is not open;
+      #     - otherwise, produces a VNom having:
+      #       - ordered param. names for the prepared statement (param "?")
+      #       - parameter "?" (the last parameter), a string containing a
+      #         parameterized SQL statement compatible with sqlite3
+      #     - connection : SQLite3
+      #       - an open database connection
+      #     - stmt : s
+      #       - SQL text including placeholders; this is assigned to
+      #         parameter "?"
+      #       - Please provide named placeholders appropriately, as
+      #         described at:
+      #           https://sqlite.org/cli.html#sql_parameters
+      return sl3_prep_stmt(arg1)
+      }
+
+     # sl3(connection, "fetch") : VNom # result row
+    "fetch" : { # get a result VNom from left of result_L
+      #   sl3(connection, "fetch") : VNom (representing a result row)
+      #   - Fetch a result from the result list.
+      #     - Produce one result row (as a VNom) from the result list.
+      #     - This is a VNom so that fields ordered independently of their
+      #       names.
+      #   - connection : SQLite3
+      #     - open database connection
+      if cnxn["status"] == "fetching"
+        then
+          while chunk := pop(cnxn["rows"])
+            do suspend chunk
+          cnxn["status"] := "open"
+      fail # fail when there are no more rows to return
+      }
+
+    default : { # execute command or prepares stmt specified by "command"
+      #   sl3msg(cnxn,    command,        arg1,   arg2, arg3)
+      #   sl3(connection, stmt|prep_stmt, parm_L, errC) : n|fail
+      #   - Purge previous results (by fetching all, if any).
+      #   - Execute a SQL statement.
+      #     - Produces &null if successful; otherwise fails.
+      #     - On failure, a string is transmitted to errC (if not &null)
+      #     - connection : SQLite3
+      #       - open database connection
+      #     - stmt|prep_stmt : s | L
+      #       - s (stmt; for SQL text)
+      #       - L (prep_stmt; result from "prepare" message)
+      #     - parmL : L
+      #       - list of parameters for stmt specifying unnamed parameter
+      #     - errC : C
+      #       - Co-expression to which error message strings will be
+      #         transmitted.
+      #       - When &null, error message strings will not be transmitted.
+      #
+      # TODO add error messaging
+
+      # send query or command to sqlite3
+      if /arg2
+        then @( errC := arg2 := create while write(&errout, @&source) )
+        else errC := arg2 # assume that arg2 has already been activated
+      if (type(arg1) == "list", type(command) == "string")
+        then {
+          SL3_TRACE(&errout,
+            "sl3msg: preparing command for implicit prepared stmt")
+          command :=
+            sl3(cnxn, "prepare", command) | {
+              sl3_transmit(
+                "sl3msg: failure while preparing command for implicit " ||
+                  "prepared stmt: " || command,
+                errC
+                )
+              fail
+              }
+          SL3_TRACE(&errout,
+            "sl3msg: setting params for implicit prepared stmt")
+          every i := vmsg(command, "key")
+            do
+              if i ~=== "?"
+                then {
+                  SL3_TRACE(&errout, "sl3msg:   setting param" || image(i))
+                  vmsg(command, "put", i, pop(arg1)) | {
+              sl3_transmit(
+                "sl3msg: failure while setting param " ||
+                  image(i) || " for implicit prepared stmt: " || command,
+                errC
+                )
+              fail
+              }
+                  }
+          SL3_TRACE(&errout, "sl3msg:   implicit prepared stmt ready2go")
+          }
+      case type(command) of {
+        "table" :
+          if not vmsg(command, "kind") == "PreparedStatement"
+            then {
+              sl3_transmit(
+                "sl3msg: command table is does not have kind " ||
+                "\"PreparedStatement\"",
+                errC
+                )
+              fail
+              }
+            else { # command has PreparedStatement as its Kind
+              command := sl3_bind_parms(command, errC) | {
+              sl3_transmit(
+                "sl3msg: failure to bind params to command: " ||
+                command["?"],
+                errC
+                )
+              fail
+              }
+              SL3_TRACE(&errout, image(command["?"]))
+              }
+        "string" : {
+          SL3_TRACE(&errout, command)
+          &null
+          }
+        default : {
+          sl3_transmit(
+            "sl3msg: command should be string or \"PreparedStatement\" " ||
+              "VNom table but is " || type(command),
+            errC
+            )
+          fail
+          }
+        }
+      # at this point, command should be a string
+      command := ".param clear\n" || command
+      SL3_TRACE(&errout, "sl3msg - sending command:\n", command)
+      command @cnxn["batonsys", "Csend"]
+      # send "print end-of-results" command to sqlite3
+      ".print []" @cnxn["batonsys", "Csend"]
+      # initialize result list for non-JSON results
+      cnxn["rows"] := []
+      # initialize row-counter for non-JSON results
+      i := 0
+      # initialize string-builder for JSON results
+      unparsed := ""
+      # receive lines until "end-of-results" sentinel is encountered
+      while "[]" ~=== (chunk := vmsg(cnxn["batonsys"], "receive"))
+        do {
+          SL3_TRACE(&errout, "  sl3msg - received chunk:\n    ", chunk)
+          # When JSON is a possibility; append chunk to unparsed
+          \unparsed ||:= chunk
+          # Only when unparsed begins with "[" are results possibly JSON
+          if /unparsed | not (unparsed[1] == "[")
+            then {
+              # Results are not JSON; stop looking for JSON
+              \unparsed := &null
+              # Put one-valued table onto cnxn["rows"], with ascending keys
+              put(cnxn["rows"], vmsg(vnew(), "put", i +:= 1, chunk))
+              }
+          }
+       SL3_TRACE(&errout, "sl3msg: after while, chunk is " || image(chunk))
+       # If JSON is still a possibility, parse or fail
+       if \unparsed ~== ""
+         then
+           cnxn["rows"] := jsonparse(unparsed) | {
+          sl3_transmit(
+            "sl3msg: jsonparse failed for: " || image(unparsed),
+            errC
+            )
+          fail
+          }
+      cnxn["status"] := "fetching"
+      &null # produce null on success (otherwise need to fail)
+      }
+    }
+end
+
+procedure sl3_transmit(s, errC)
+  if \errC
+    then {
+      s @errC
+      return
+      }
+end
+
+# ref: https://sqlite.org/cli.html#sql_parameters
+procedure sl3_named_parm_check(p)
+  if not (type(\p) == ("string" | "integer"))
+    then fail
+  p ? case move(1) of {
+    "?" : 
+      if (tab(many(&digits)), pos(0))
+        then return
+    ":" | "@" | "$" :
+      if (tab(many(&letters ++ &digits)), pos(0))
+        then return
+    default: fail
+    }
+end
+
+procedure sl3_bind_parms(chunk, errC)
+  local parm, v, rslt
+  rslt := ""
+  # row fields are ordered by VNom key
+  every parm := vmsg(chunk, "key")
+    do {
+      v := chunk[parm] 
+      case type(v) of {
+        "string" :
+          if parm == "?"
+            then
+              return rslt || v
+            else
+              rslt ||:= sl3_bind_string(v, parm) || "\n"
+        "integer" | "real" :
+          rslt ||:= sl3_bind_numeric(v, parm) || "\n"
+        default : {
+          sl3_transmit(
+            "sl3_bind_parms: parameter value for key \"" ||
+              parm || 
+              "\" should be string|integer|real but is " || type(v),
+            errC
+            )
+            fail
+          }
+        }
+      }
+  fail
+end
+
+# e.g., sl3_bind_string("where's \"Waldo\"", "@puzzle")
+# produces: .parameter set @puzzle "'where''s \"Waldo\"'"
+procedure sl3_bind_string(s, p)
+  if (not sl3_named_parm_check(p)) | /s | type(s) ~== "string"
+    then {
+      write(&errout, &progname,
+        ": FATAL error - precondition violation in sl3_bind_string(s, p)")
+      writes(&errout, "type(p) is ", type(p), "; p is: ");
+      write(&errout, image(p))
+      write(&errout, "type(s) is ", type(s), "; s is:");
+      write(&errout, "  ", image(s))
+      fail
+      }
+  return ".parameter set " || p ||
+    " \"'" ||       # precede string value with "'
+    (
+      replacem(
+        s,
+        "\"", "\\\"", # replace " with \"
+        "'",  "''"    # replace ' with ''
+        ) |
+        s
+      ) ||
+    "'\""           # succede string value with '"
+end
+
+# e.g., sl3_bind_numeric("42", "@answer")
+# produces: .parameter set @answer 42
+procedure sl3_bind_numeric(n, p)
+  if (not sl3_named_parm_check(p)) | (not (n := numeric(\n)))
+    then {
+      write(&errout, &progname,
+        ": FATAL error - precondition violation in sl3_bind_numeric(n, p)")
+      write(&errout, "type(n) is ", type(n), "; n is ", image(n))
+      write(&errout, "type(p) is ", type(p), "; p is ", image(p))
+      fail
+      }
+  return ".parameter set " || p || " " || n
+end
+
+# create prepared statement as VNom
+procedure sl3_prep_stmt(s)
+  local V, p, i
+  # vnew(Original:T, Type:s, ID:s, Metatable:T, Disposable:s, Kind:s):V
+  V := vnew( , , , , , "PreparedStatement"); i := 0
+  every p := sl3_prep_parm(s)
+    do
+      if p == "?"
+        then vmsg(V, "put", "?" || (i +:= 1), &null)
+        else vmsg(V, "put", p, &null)
+  vmsg(V, "put", "?", s)
+  return V
+end
+
+# procedure matching pepared statement bind variables
+procedure sl3_prep_parm(s)
+  local b
+  s ?
+    every sl3_prep_tmplt() || (b := sl3_prep_bindee()\1)
+      do suspend b
+end
+
+# matching procedure to match a bind variable in a prepared statement
+# : sl3_prep_bindee   '@' many(alphaum) | # named parameters:
+#                     ':' many(alphaum) | #  alphanum := &letters ++ &digits
+#                     '$' many(alphaum) |
+#                     '?' many(&digits) |
+#                     '?'                 # unnamed parameter
+#
+procedure sl3_prep_bindee()
+  static alfnum
+  initial alfnum := &letters ++ &digits
+  suspend ="@" || tab(many(alfnum))  |
+  suspend =":" || tab(many(alfnum))  |
+  suspend ="$" || tab(many(alfnum))  |
+  suspend ="?" || tab(many(&digits)) |
+  suspend ="?"
+end
+
+# matching procedure to match a query context in a prepared statement
+# : sl3_prep_tmplt sq nosq sq sl3_prep_tmplt |
+#            nosq punc           |
+#            nosq       sl3_prep_tmplt
+procedure sl3_prep_tmplt()
+  static nosq # exclude single-quotes
+  static punc # characters beginning named-parameter names
+  initial {
+    nosq := &cset -- '\''
+    punc := '@:$?'
+    }
+  suspend ="'" || tab(many(nosq)) || ="'" || sl3_prep_tmplt() |
+          1(tab(any(nosq)), any(punc)) |
+          tab(any(nosq)) || sl3_prep_tmplt()
+end
+
+$endif # SL3

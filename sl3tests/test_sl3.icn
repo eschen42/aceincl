@@ -1,0 +1,89 @@
+#!/usr/bin/env icon
+# include three prerequisites for sl3.icn
+$include "fileDirIo.icn" # fileDirIo.icn is a prerequisite for sl3.icn
+$include "vnom.icn" # vnom.icn is a prerequisite for sl3.icn
+$include "jsonparse.icn" # fileDirIo.icn is a prerequisite for sl3.icn
+$include "sl3.icn"
+
+#$define TEST_SL3_TRACE (not &fail) & write
+$define TEST_SL3_TRACE (&fail) & write
+
+procedure main(args)
+  local cnxn
+  local path_s, options_s, errC
+  local hack, chunk, err_off
+  if not which("sqlite3")
+    then {
+      write(&errout,"    sqlite3 not detected - test case is BLOCKED")
+      exit(-1)
+      }
+
+  # don't forget this or infinite forks will fill the process space... 
+  baton_flatware(args)
+
+  # create co-expression to handle error strings
+  @(errC := create while write(@ &source))
+
+  # open sqlite and establish baton
+  path_s := ":memory:"
+  options_s := &null
+  # sl3new(path, options, errC) VNomSQLite3
+  # sl3(connection, "open", path, options, errC) : VNomSQLite3
+  if not (cnxn := sl3new(path_s, options_s, errC))
+    then stop("failed to open connection")
+
+  # demonstrate processing results of a query
+  TEST_SL3_TRACE(&errout,
+    "  1. Before select, cnxn[\"status\"] = ", cnxn["status"])
+  sl3(cnxn, "select 'hello' as greeting union select 'world';", , errC)
+  TEST_SL3_TRACE(&errout,
+    "  2. Before fetch, cnxn[\"status\"] = ", cnxn["status"])
+  every chunk := sl3(cnxn, "fetch")
+    do 
+      every hack := vmsg(chunk, "key")
+        do write(hack, ": ", chunk[hack])
+  TEST_SL3_TRACE(&errout,
+    "  3. After fetch, cnxn[\"status\"] = ", cnxn["status"], "\n")
+
+  err_off := [0, -1][2]
+  # demonstrate processing results of a dot command
+  &error := err_off
+  TEST_SL3_TRACE(&errout,
+    "  1a. Before .show, cnxn[\"status\"] = ", cnxn["status"])
+  #&trace := -1
+  sl3(cnxn, ".show", , errC)
+  if &error < err_off
+    then {
+      TEST_SL3_TRACE(&errout, "  There were ", err_off - &error, " errors; ")
+      TEST_SL3_TRACE(&errout, "Error ", &errornumber, " - ", &errortext)
+      }
+  &error := err_off
+  errorclear()
+  TEST_SL3_TRACE(&errout,
+    "  2a. Before fetch, cnxn[\"status\"] = ", cnxn["status"])
+  every chunk := sl3(cnxn, "fetch")
+    do
+      # results of commands are ordered by a discardable integer key
+      every hack := key(chunk)
+        do
+          if hack ~=== chunk
+            then write(chunk[hack])
+  &trace := 0
+  if &error < err_off
+    then {
+      TEST_SL3_TRACE(&errout, "  There were ", err_off - &error, " errors; ")
+      TEST_SL3_TRACE(&errout, "Error ", &errornumber, " - ", &errortext)
+      }
+  TEST_SL3_TRACE(&errout,
+    "  3a. After fetch, cnxn[\"status\"] = ", cnxn["status"], "\n")
+  &error := 0
+
+  # stop sqlite3 and shut down the batons
+  write("closing cnxn")
+  sl3(cnxn, "close", errC)
+  write("closed cnxn")
+  write(
+    "vmsg(cnxn[\"batonsys\"], \"dispose\") produces ",
+    image(cnxn["disposition"])
+    )
+end

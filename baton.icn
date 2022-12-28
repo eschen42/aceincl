@@ -1,0 +1,894 @@
+$ifndef BATON
+$define BATON
+############################################################################
+#
+# File: baton.icn
+#
+# Subject: baton.icn - hand data from one process to another
+#
+# Author: Arthur Eschenlauer (https://orcid.org/0000-0002-2882-0508)
+#
+# Date: 16 November 2022
+#
+# URL: https://chiselapp.com/user/eschen42/repository/aceincl/file?name=baton.icn
+#
+############################################################################
+#
+# This file is in the public domain. Art Eschenlauer has waived all
+# copyright and related or neighboring rights to:
+#   baton.icn - hand data from one process to another
+# For details, see:
+#   https://creativecommons.org/publicdomain/zero/1.0/
+#
+# If you require a specific license and public domain status is not suffici-
+# ent for your needs, please substitute the MIT license (see below), bearing
+# in mind that the copyright "claim" is solely to meet your requirements
+# and does not imply any restriction on use or copying by the author:
+#
+#   Copyright (c) 2022, Arthur Eschenlauer
+#
+#   Permission is hereby granted, free of charge, to any person obtaining
+#   a copy of this software and associated documentation files (the
+#   "Software"), to deal in the Software without restriction, including
+#   without limitation the rights to use, copy, modify, merge, publish,
+#   distribute, sublicense, and/or sell copies of the Software, and to
+#   permit persons to whom the Software is furnished to do so, subject
+#   to the following conditions:
+#
+#   The above copyright notice and this permission notice shall be
+#   included in all copies or substantial portions of the Software.
+#
+#   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+#   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+#   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
+#   IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+#   CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+#   TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+#   SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+#
+############################################################################
+#
+# baton.icn - hand data from one process to another
+#
+# The baton procedure provides a serverless way to pass data between
+# processes using five files, one for a buffer and the others for coordin-
+# ating the transfer (in a manner inspired by RS-232).
+#
+############################################################################
+#
+# usage:
+#
+# baton("write", buffer:s, file:f|C, warn:C, wait_secs:N) : s | fail
+#   - copy input from file to file named by buffer
+#   - file is optional; default is &input
+#     - file:f is a file open for reading
+#     - file:C is a co-expression producing string values,
+#       - e.g.:  file := create !&input
+#       - file:C is permitted to produce values containing multiple newlines
+#   - buffer argument is required
+#   - warn argument may be &null or a co-expression that can handle
+#     transmitted warning strings, e.g.:
+#     - create repeat @&source | @main # silence; is the default behavior
+#     - create repeat write(&errout, \@&source | "") | @main
+#   - wait_secs argument may be &null | integer | real specifying
+#     approximate number of seconds to wait for initial handshake
+#   - produces an error string only if unsuccessful (fails otherwise)
+#
+# baton("read", buffer:s, file:f|C, warn:C, wait_secs:N) : s | fail
+#   - copy output from file named by buffer to file
+#   - file is optional; default is &output
+#     - file:f is a file open for writing
+#     - file:C is a co-expression receiving string values,
+#       - e.g.:  @(file := create while write(&output, @&source))
+#   - buffer, warn, and wait_secs arguments as above
+#   - produces an error string only if unsuccessful (fails otherwise)
+#
+# baton("select", buffer:s, file:n|x, warn:C, wait_secs:N) : n | fail
+#   - produces &null when data are available for reading from buffer
+#   - buffer and warn arguments as above
+#   - wait approximately wait_secs seconds for success.
+#   - file argument is ignored even if not &null
+#   - This action is experimental and may be of no practical value.
+#
+# baton("clean", buffer:s, file:n|x, warn:C) : fail
+#   - cleans up coordination files that may be left behind when "write" or
+#     "read" is interrupted before they can delete these files
+#   - also called internally by "read"
+#   - buffer and warn arguments as above
+#   - file argument is ignored even if not &null
+#
+# handshake protocol (inspired by RS-232C):
+#   Handshake files are "set" by creation and "unset" by deletion.
+#
+#   How to ensure that handshake files are removed even when baton fails?
+#   Since both sh and cmd support the || operator, "baton write" can exit(0)
+#   when it succeeds, assuming that, when it recieves a signal (such as
+#   SIGPIPE for a broken pipe) it will terminate with an exit code that
+#   won't be zero, e.g.:
+#     # system("icont -o baton baton_main.icn")
+#     # delay(100)
+#     fout := open("(baton write bin || baton clean bin)", "wp")
+#     fin  := open("(baton read bout || baton clean bout)", "rp")
+#     system(
+#       "(" ||
+#       "(baton read bin || baton clean bin) " ||
+#       " | sqlite3 -batch -json | " ||
+#       "(baton write bout || baton clean bout)" ||
+#       " &"
+#       )
+#
+#   Connection establishment and conclusion:
+#   - buffer_ack
+#       - Set by "read" when waiting for buffer_wrt to be created by
+#         "write".
+#   - buffer_wrt
+#       - Set by "write" after detecting buffer_ack, when waiting for 
+#         buffer_rdr to be created by "read".
+#       - Unset by "write" as it prepares to quit.
+#       - If it disappears, "read" should:
+#         - invoke "baton clean"
+#         - terminate itself gracefully.
+#   - buffer_rdr
+#       - Set by "read" when it sees buffer_wrt created by "write".
+#       - Unset by "read" after buffer_wrt disappears or when "read" is
+#         quitting.
+#       - If it disappears, "write" should:
+#         - invoke "baton clean"
+#         - terminate itself gracefully.
+#
+#   Buffer transfer and acknowledgement:
+#   - buffer
+#       - Filled with content by "write" before it sets buffer_rdy.
+#       - Unset by "read" after it is read.
+#       - First line is an integer specifying size of following content.
+#   - buffer_rdy
+#       - Set by "write" when it has copied input to the buffer.
+#       - Unset by "read" as after has read buffer.
+#   - buffer_ack
+#       - Set by "read" after it successfully reads and removes buffer
+#         and buffer_rdy.
+#       - Unset by "write" after it observes buffer to disappear.
+#   - buffer_nak
+#       - Only set by "read" when buffer is corrupt
+#       - When it is set, "write" should terminate itself gracefully.
+#
+#   Handshake sequence:
+#   1 "read":
+#       - delete buffer|buffer_rdy|buffer_wrt|buffer_nak, if exist
+#       - set buffer_ack
+#   2 "write":
+#       - when detect buffer_ack,
+#         - set buffer_wrt
+#   3 "read":
+#       - when detect buffer_wrt,
+#         - set buffer_rdr
+#   4.1 "write" - repeat while buffer_rdr exists:
+#        - wait buffer not exists,
+#        - wait till buffer_ack exists or buffer_nak exists,
+#          but abort if buffer_rdr becomes unset (i.e., reader hung up)
+#        - if buffer_nak is set:
+#          - abort gracefully with warning
+#        - else (i.e., buffer_ack is set):
+#          - unset buffer_ack
+#          - when input is available:
+#            - copy input to buffer
+#          - otherwise, at end of input:
+#            - copy EOT (end-of-transmission, ^D) to buffer
+#          - set buffer_rdy
+#   4.2 "write" - abort:
+#        - unset buffer_rdy and buffer_wrt
+#        - wait with short timeout for buffer_rdr to become unset
+#        - only when reader hangs up (i.e., buffer_rdr disappears):
+#          - purge all signal files (e.g., invoke "baton clean")
+#        - fail on success; produce explanation string on failure
+#   5.1 "read" - repeat while buffer_wrt exists:
+#        - wait for buffer_rdy,
+#          but abort if buffer_wrt becomes unset (i.e., writer hung up)
+#        - try to get content from buffer
+#          - if successful:
+#            - unset buffer and buffer_rdy
+#            - set buffer_ack
+#          - otherwise (i.e., could not read content from buffer):
+#            - if writer hung up, abort gracefully
+#            - otherwise (writer seems still to be active)
+#              - unset buffer and buffer_rdy
+#              - set buffer_nak (i.e., panic)
+#              - abort gracefully
+#   5.2 "read" - abort:
+#        - unset buffer_ack|buffer_rdr
+#        - wait (briefly) for buffer_wrt to be unset
+#        - purge all signal files (e.g., invoke "baton clean")
+#        - fail on success; produce explanation string on failure
+#
+############################################################################
+#
+# Requires:
+#   - preprocessor
+#
+# Recommended:
+#   - system function
+#   - pipes
+#
+############################################################################
+#
+# Preprocessor symbols defined in this file:
+#   - BATON if defined, skip inclusion (to avoid double-inclusion)
+#   - BATON_CWARN if defined, should be a C accepting strings, e.g.:
+#     - `create repeat @&source | @&main` # this is the default
+#     - `create repeat write(&errout, \@&source | "") | @&main`
+#   - BATON_PATIENCE if defined, the polling interval in milliseconds
+#     - default, 2 ms (or longer if platform does not support it)
+#   - BATON_TIMEOUT_MS if defined, timeout after this number of milliseconds
+#     - default, 200 ms
+#   - BATON_TRACE if defined, should look like `write` or `&fail`
+#   - BATON_HANDSHAKE_ADJUST if defined, adjusts testing condition where
+#     BATON_HANDSHAKE_TIMEOUT succeeds
+#   - BATON_HANDSHAKE_TIMEOUT if defined, expression that should succeed
+#     when initial handshake has not completed in a timely manner
+#
+############################################################################
+#
+# Links: none
+#
+############################################################################
+
+$ifndef BATON_CWARN
+  $define BATON_CWARN create repeat @&source | @&main
+  #$define BATON_CWARN create repeat write(&errout, \@&source | "") | @&main
+$endif # BATON_CWARN
+
+$ifndef BATON_PATIENCE
+# sleep to prevent wasteful wakefulness,
+# which limits throughput to no more than 500 lines per second
+$define BATON_PATIENCE 2
+$endif # BATON_PATIENCE
+
+$ifndef BATON_TIMEOUT_MS
+# default timeout in milliseconds for buffer creation or deletion to occcur.
+$define BATON_TIMEOUT_MS 200
+$endif # BATON_TIMEOUT_MS
+
+$ifdef UNDEFINED
+  $ifndef BATON_TRACE
+    $define BATON_TRACE_GLOBALS
+    global g_baton_action, g_baton_buffer
+    $define BATON_TRACE writes(&errout, "baton ", g_baton_action, " ", g_baton_buffer, ": ") & write
+  $endif # BATON_TRACE
+$else
+  $define BATON_TRACE &fail
+$endif # UNDEFINED
+
+$define BATON_READER_HUNG_UP "reader hung up"
+$define BATON_INPUT_EOF "input EOF"
+$define BATON_CANNOT_WRITE_OUTPUT "cannot write output"
+$define BATON_WRITER_HUNG_UP "writer hung up"
+$define BATON_RECEIVED_EOT "received EOT"
+$define BATON_CANNOT_UNSET "clean cannot unset "
+
+############################################################################
+#
+# internal functions
+#
+# baton_set(filename:s, content:x, timeout:i, warn:n|C) : n | fail
+#   - copy content to file named by filename
+#   - interval BATION_PATIENCE milliseconds passes between polls for effect
+#   - produce &null on success (i.e., poll detects intended change)
+#   - time out and fail if effect not detected within BATON_TIMEOUT_MS mSec
+#   - both timeout and content may be &null
+#   - warn is as for baton()
+#
+# baton_set_nocontent(filename:s, timeout:i, warn:n|C) : n | fail
+#   - invoke baton_set with &null content
+#
+# baton_unset(filename:s, timeout:i, warn:n|C) : n | fail
+#   - remove the file named by filename
+#   - interval BATION_PATIENCE milliseconds passes between polls for effect
+#   - produce &null on success (i.e., poll detects intended change)
+#   - time out and fail if effect not detected within BATON_TIMEOUT_MS mSec
+#   - timeout may be &null
+#   - warn is as for baton()
+#
+# baton_get(filename:s) : x | fail
+#   - get content from file named by filename
+#   - fail if unsuccessful
+#
+# baton_isset(filename:s) : n | fail
+#   - succeed if filename names an existing file (i.e., flag is set)
+#   - fail if unsuccessful
+#
+# baton_isunset(filename:s) : n | fail
+#   - succeed if filename does not name an existing file (i.e., flag unset)
+#   - fail if unsuccessful
+#
+############################################################################
+
+procedure baton_set(filename, content, timeout, warn)
+  # set content of baton buffer or signal named by filename
+  # If content is not &null,
+  #   write *content as header (first line) followed by content.
+  # Otherwise, write create (and truncate) file
+  # - produce &null on success within timeout
+  #   - otherwise fail
+  local f
+  local starttime
+  /timeout := BATON_PATIENCE * 10
+  # - try to open file for overwrite (otherwise, fail)
+  f := open(filename, "cwu") | fail
+  BATON_TRACE(&errout, "baton_set opened " || filename)
+  #  - Is there content to write file?
+  if \content
+    then {
+      write(f, *content)  # write header
+      writes(f, content)  # write content
+      close(f)            # close filled file
+      # - wait if necessary till it exists (from open's perspective)
+      until baton_isset(filename)
+        do delay(BATON_PATIENCE)
+      BATON_TRACE(&errout, "baton_set wrote content \"" || content ||
+        "\" to " || filename)
+      return              # return &null
+      }
+    else
+      close(f)            # close emptied file
+      # - wait briefly if necessary till it exists (from open's perspective)
+      starttime := &time
+      while (&time - starttime) < timeout
+        do
+          if baton_isset(filename)
+            then return             # return &null
+            else delay(BATON_PATIENCE)
+      BATON_TRACE(&errout, "baton_set wrote empty file named " || filename)
+  # fail to produce a result
+  "" @\warn # ensure that warn has been activated at least once
+  ( "WARNING: baton_set(" ||
+    filename || ", content, " || timeout || ") timed out"
+    ) @\warn
+end
+
+procedure baton_set_nocontent(filename, timeout, warn)
+  # invoke baton_set with &null content
+  return baton_set(filename, &null, timeout, warn)
+end
+
+procedure baton_unset(filename, timeout, warn)
+  # reset (remove) baton buffer or signal named by filename
+  # - produce &null unless filename cannot be removed
+  #   - otherwise fail
+  # - remove filename if exists
+  local starttime
+  /timeout := BATON_PATIENCE * 10
+  if baton_isset(filename)
+    then remove(filename)
+  # - wait briefly if necessary till it vanishes (from open's perspective)
+  starttime := &time
+  while (&time - starttime) < timeout
+    do
+      if baton_isunset(filename)
+        then return                 # return &null
+        else delay(BATON_PATIENCE)
+  # fail to produce a result
+  "" @\warn # ensure that warn has been activated at least once
+  ( "WARNING: baton_get(" ||
+    filename || ", " || timeout || ") timed out"
+    ) @\warn
+end
+
+procedure baton_get(filename)
+  # get content from baton buffer or signal named by filename
+  # if file exists but is empty, return &null
+  # else, if content as length as specified in header, return content
+  # else, fail
+  local f, content, i
+  # if filename exists, open; else, fail
+  if f := open(filename, "ru") | fail
+    then {
+      BATON_TRACE(&errout, "baton_get opened " || filename)
+      # read length of content (or fail when content is invalid)
+      i := read(f) | return &null # why doesnt `fail` work here?
+      BATON_TRACE(&errout, "baton_get read length from " || filename)
+      # read content, if any (otherwise, there's no header)
+      content := reads(f, 0 < i) | ""
+      close(f)
+      # handle no-content case
+      \content | return &null
+      BATON_TRACE(&errout, "baton_get found not-null content in " || filename)
+      # validate content-length (or fail when content is invalid)
+      i = *content | fail
+      BATON_TRACE(&errout, "baton_get found valid content in " || filename)
+      # produce content
+      return content
+      }
+end
+
+procedure baton_isunset(filename)
+  # succeed when baton buffer or signal file named filename does not exist
+  return not baton_isset(filename)
+end
+
+procedure baton_isset(filename)
+  # succeed when baton buffer or signal file named filename exists
+  return (close(open(filename)), &null)
+end
+
+$ifndef BATON_HANDSHAKE_TIMEOUT
+  $define BATON_HANDSHAKE_TIMEOUT (0 > \wait_secs)
+$endif # BATON_HANDSHAKE_TIMEOUT
+
+$ifndef BATON_HANDSHAKE_ADJUST
+  $define BATON_HANDSHAKE_ADJUST \wait_secs -:= BATON_PATIENCE
+$endif # BATON_HANDSHAKE_ADJUST
+#       action    buffer    file      Cwarn   wait_secs
+# baton("write",  buffer:s, file:f|C, warn:C, wait_secs:N) : s | fail
+# baton("read",   buffer:s, file:f|C, warn:C, wait_secs:N) : s | fail
+# baton("select", buffer:s, file:n|x, warn:C, wait_secs:N) : n | fail
+# baton("clean",  buffer:s, file:n|x, warn:C               ) : fail
+procedure baton(action, buffer, file, Cwarn, wait_secs)
+  local f, fn_wrt, fn_rdr, fn_ack, fn_nak, fn_buf, fn_rdy, i, content
+  local result, inner, trace_cache
+  $ifdef BATON_TRACE_GLOBALS
+    /g_baton_action := action
+    /g_baton_buffer := buffer
+  $endif
+  # By default, warning-handler co-expression does nothing:
+  #   create repeat @&source | @&main
+  # One possible alternative:
+  #   create repeat write(&errout, @&source) | @&main
+  /Cwarn := BATON_CWARN
+  /wait_secs := 10
+  wait_secs *:= 1000.0
+  BATON_TRACE(&errout,
+    "^^^ baton.icn: baton ", action, " ", buffer, " ", image(wait_secs))
+
+  # "select can be handled quickly without impeding other choices much
+  fn_rdy := buffer || "_rdy"  # writer signals buffer ready
+  ### baton select ### -----------------------------------------------------
+  if action == "select"
+    then {
+      while not BATON_HANDSHAKE_TIMEOUT
+        do {
+          if baton_isset(fn_rdy)
+            then return baton_isset(fn_rdy)
+          delay(BATON_PATIENCE)
+          BATON_HANDSHAKE_ADJUST
+          }
+      return baton_isset(fn_rdy) | fail
+      }
+  ### end baton select ### -------------------------------------------------
+  # connection handshake
+  fn_wrt := buffer || "_wrt"  # writer is awake
+  fn_rdr := buffer || "_rdr"  # reader, awake, detected writer, listening
+  # data handshake
+  fn_buf := buffer            # buffer for payload
+  fn_ack := buffer || "_ack"  # reader signals successful read, listening
+  fn_nak := buffer || "_nak"  # reader signals failed read, listening
+
+  # restrict action to "read" or "write"
+  if not (action === ("read" | "write" | "clean"))
+    then return "usage: baton 'read'|'write'|'clean'|'select' buffer:s file:f|C|n"
+
+  # branches for "clean", "read", and "write" behavior
+  case action of {
+
+    ### baton clean ### ----------------------------------------------------
+    "clean" : {
+      trace_cache := &trace
+      &trace := 0
+      result := BATON_CANNOT_UNSET
+      every content := (fn_wrt|fn_rdr|fn_rdy|fn_buf|fn_nak|fn_ack)
+        do
+          if not baton_unset(content, BATON_TIMEOUT_MS, Cwarn)
+            then result ||:= content || " "
+      # failure indicates success, counterintuitively, because
+      # write and read produce values only to explain failures.
+      BATON_TRACE(
+        &errout,
+        "baton clean ",
+        " fails: " || (BATON_CANNOT_UNSET ~== result) |
+          "succeeds"
+        )
+      &trace := trace_cache
+      if result == BATON_CANNOT_UNSET
+        then fail
+        else return result
+      }
+
+    ### baton write ### ---------------------------------------------------
+    "write" : {
+      # write via buffer
+      # writer by default reads lines from &input
+      /file := &input
+      # if file argument is of type "file", convert to a co-expression
+      # producing lines of file
+      if type(file) == "file"
+        then file := create !file
+
+      # --------- begin handshake ---------
+      # writer is responsible for detecting fn_ack before setting fn_wrt
+      #     handshake 2:
+      #       - when detect buffer_ack,
+      #         - set buffer_wrt
+
+      # - wait indefinitely for deletion of any stale rdr signal by reader
+      content := &null
+      until not baton_isset(fn_rdr)
+        do {
+          if /content
+            then
+              BATON_TRACE(&errout,
+                content := "wait for fn_rdr to be deleted")
+          delay(BATON_PATIENCE)
+          }
+
+      # - wait indefinitely for creation of ACK signal, by reader
+      content := &null
+      until BATON_HANDSHAKE_TIMEOUT | baton_isset(fn_ack)
+        do {
+          if /content
+            then
+              BATON_TRACE(&errout,
+                content := "waiting for " || fn_ack)
+          delay(BATON_PATIENCE)
+          BATON_HANDSHAKE_ADJUST
+          }
+      if not BATON_HANDSHAKE_TIMEOUT
+        then {
+          BATON_TRACE(&errout, "received first fn_ack from reader")
+          # - signal that writer is online
+          BATON_TRACE(&errout, "setting " || fn_wrt)
+          baton_set_nocontent(fn_wrt, BATON_TIMEOUT_MS, Cwarn)
+          BATON_TRACE(&errout, "did set " || fn_wrt)
+          }
+
+      # - reader completes handshake init. by setting fn_rdr and fn_ack
+      content := &null
+      until BATON_HANDSHAKE_TIMEOUT | baton_isset(fn_rdr) & baton_isset(fn_ack)
+        do {
+          # abort if reader clears fn_ack
+          if baton_isunset(fn_ack)
+            then {
+              result := BATON_READER_HUNG_UP
+              break
+              }
+          BATON_TRACE(&errout, "waiting for " || fn_rdr)
+          delay(BATON_PATIENCE)
+          BATON_HANDSHAKE_ADJUST
+          }
+
+     if BATON_HANDSHAKE_TIMEOUT
+       then result := "reader did not complete initial handshake"
+
+      # --------- continue handshake ---------
+      #     handshake 4.1 - repeat while buffer_rdr exists:
+      #       - wait till buffer does not exist,
+      #       - wait till buffer_ack exists or buffer_nak exists,
+      #         but abort if buffer_rdr becomes unset
+      #       - if buffer_nak is set:
+      #         - abort gracefully with warning
+      #       - else (i.e., buffer_ack is set):
+      #         - unset buffer_ack
+      #         - when input is available:
+      #           - copy input to buffer
+      #         - otherwise, at end of input:
+      #           - copy EOT (end-of-transmission, ^D) to buffer
+      #         - set buffer_rdy
+
+      if /result
+        then BATON_TRACE(&errout, "received fn_rdr from reader")
+        else write(&errout, "baton write ", fn_buf, ": ", image(result))
+
+      content := &null
+
+      # - if reader has not hung up, then repeat while can read input file
+      #   - note persistence of content when buffer has filled
+      /result := while baton_isset(fn_rdr) do {
+
+        # - wait till buffer does not exist
+        while baton_isset(fn_buf)
+          do
+            if baton_isunset(fn_rdr)
+              then break break BATON_READER_HUNG_UP
+              else delay(BATON_PATIENCE)
+
+        BATON_TRACE(&errout, "done waiting for fn_buf not to exist")
+
+        # - wait till buffer_ack exists or buffer_nak exists,
+        #   but abort if buffer_rdr becomes unset
+        until baton_isset(fn_ack | fn_nak)
+          do
+            if baton_isunset(fn_rdr)
+              then break break BATON_READER_HUNG_UP
+              else delay(BATON_PATIENCE)
+        # now either buffer_ack or buffer_nak is set
+
+        BATON_TRACE(&errout, "done waiting for fn_ack|fn_nak to exist")
+
+        # - if buffer_nak is set:
+        #   - abort gracefully because reader panics
+        if baton_isset(fn_nak)
+          then break "reader set NAK (reader panic)!"
+
+        # remove ack if it exists
+        until baton_unset(fn_ack, BATON_TIMEOUT_MS, Cwarn)
+          do
+            if baton_isunset(fn_rdr)
+              then break break BATON_READER_HUNG_UP
+              else delay(BATON_PATIENCE)
+
+        BATON_TRACE(&errout, "invoking @file")
+
+        # read lines when possible; otherwise, mark end-of-transmission
+        content := @file | char(4) # EOT (^D)
+        BATON_TRACE(&errout, "invoked @file")
+
+            # check that reader didn't die, e.g., when @file is too slow
+            if baton_isunset(fn_rdr)
+              then break BATON_READER_HUNG_UP
+
+            # set buffer - this should not fail
+            BATON_TRACE(&errout,
+              "** baton write: calling \"baton_set " || fn_buf || "\""
+              )
+
+            BATON_TRACE(&errout, "try to set content")
+            # try thrice to set content
+            every i := 3 to 1 by -1
+              do {
+                if baton_set(fn_buf, content, BATON_TIMEOUT_MS, Cwarn)
+                  then break
+                if i := 1
+                  then break break "buffer-write failed for " || fn_buf
+                }
+
+            BATON_TRACE(&errout, "did set content")
+            # at a minimum, buf should have a single content with an integer
+            # otherwise, baton_get produces &null.
+            # baton_get fails if buffer content is invalid
+            f := baton_get(fn_buf) |
+              break "baton_get failed for " || fn_buf
+
+            \f | break "\"baton_get " || fn_buf || "\" produced null"
+
+            f == content | break "content validation failed for " || fn_buf
+            content := &null
+
+            BATON_TRACE(&errout, "setting fn_rdy")
+            # signal that buffer is ready for reader
+            baton_set_nocontent(fn_rdy, BATON_TIMEOUT_MS, Cwarn) | break "buffer-ready set failed"
+            BATON_TRACE(&errout, "did set fn_rdy")
+        # repeat
+        next
+        }
+
+      # either result is &null, when reader quits (deleting fn_rdr)
+      # or result explains reason why writer should shut down
+
+      if /result
+        then
+          BATON_TRACE(&errout, "begin shutdown for baton write ", buffer,
+            " because result is: ", image(result)
+            )
+
+      # --------- conclude handshake ---------
+      #     handshake 4.2 - abort:
+      #       - unset buffer_rdy and buffer_wrt
+      #       - wait with short timeout for buffer_rdr to become unset
+      #       - only when reader hangs up (i.e., buffer_rdr disappears):
+      #         - purge all signal files (e.g., invoke "baton clean")
+      #       - fail on success; produce explanation string on failure
+
+      # - signal that writer is done
+      every baton_unset(fn_rdy | fn_wrt, BATON_TIMEOUT_MS, Cwarn)
+
+      # if result is &null,
+      #   wait briefly to see if fn_rdr disappears
+      # else
+      #   message to stderr unless buffer contains EOT (^D)
+      if /result
+        then {
+          every i := 1 to 10
+            do
+              if baton_isset(fn_rdr)
+                then delay(BATON_PATIENCE)
+                else break
+          }
+        else
+          if (BATON_INPUT_EOF ~== result, BATON_READER_HUNG_UP ~== result)
+            then write(&errout, result)
+
+       # if reader hung up, invoke baton "clean"
+       if baton_isset(fn_rdr)
+         then {
+           baton("clean", buffer, file)
+           }
+
+      # failure indicates success
+      if /result | result == (BATON_INPUT_EOF | BATON_READER_HUNG_UP)
+        then {
+          fail
+          }
+
+      # otherwise, report explanation for unsuccessful outcome
+      &trace := 10
+      return "baton write " || buffer || " error: " || result
+      }
+
+    ### baton read ### ---------------------------------------------------
+    "read" : {
+
+      BATON_TRACE(&errout, "** baton read: image(file) is ", image(file))
+      # reader by default writes &output
+      /file := &output
+      i := &current
+      # if file argument is of type "file", convert to co-expression
+      # receiving values to write to file
+      if type(file) == "file"
+        then
+          @( # activate co-expression immediately to receive first value
+            file :=
+              create
+                while (
+                  # it seems unlikely that a runtime error can be handled,
+                  # but this code is written to try in case it can.
+                  &error := 1,
+                  content := "",
+                  (content := @&source) |
+                    break write(&errout, "baton read ", buffer,
+                      " failed to read from buffer because ", &errortext
+                      ),
+                  # The write function can abort the program because Icon
+                  # does not catch signals, including SIGPIPE that is sent
+                  # when &output writes to a broken pipe; there may be no
+                  # general alternative way to detect a broken pipe.
+                  write(file, content) |
+                    break write(
+                      &errout, "baton read ",
+                      buffer, " failed to write content to file because",
+                      &errortext
+                      ),
+                  flush(file),
+                  &error := 0
+                  )
+            )
+
+      BATON_TRACE(&errout, "** baton read: image(file) has become ", image(file))
+
+      # --------- begin handshake ---------
+      # reader is responsible for removing signal files and setting fn_ack
+      #     handshake 1:
+      #         - delete buffer|buffer_rdy|buffer_wrt|buffer_nak, if exist
+      #         - set buffer_ack
+
+      # - remove stale signal files if any
+      BATON_TRACE(&errout, "** baton read: remove stale signal files if any ", image(file))
+      baton("clean", buffer, file)
+
+      # - tell the writer that reader is ready for input (abort on fail)
+      if not baton_set_nocontent(fn_ack, BATON_TIMEOUT_MS, Cwarn)
+        then return "baton read: cannot write file: " || fn_ack
+
+      # --------- continue handshake ---------
+      #     handshake 3:
+      #       - when detect buffer_wrt,
+      #         - set buffer_rdr
+
+      # - wait for writer
+      content := &null
+      until BATON_HANDSHAKE_TIMEOUT | baton_isset(fn_wrt)
+        do {
+          BATON_TRACE(&errout,
+            "waiting for fn_wrt to be set")
+          delay(BATON_PATIENCE)
+          BATON_HANDSHAKE_ADJUST
+          }
+
+      content := &null
+      if not BATON_HANDSHAKE_TIMEOUT
+        then {
+          BATON_TRACE(&errout, fn_wrt || " was detected")
+          # - tell the writer that reader is here (abort on fail)
+          if not baton_set_nocontent(fn_rdr, BATON_TIMEOUT_MS, Cwarn)
+            then return "baton read: cannot write file: " || fn_rdr
+          BATON_TRACE(&errout, "set " || fn_rdr)
+          }
+      if BATON_HANDSHAKE_TIMEOUT
+        then result := "writer did not complete initial handshake"
+
+      # --------- continue handshake ---------
+      #     handshake 5.1 - repeat while buffer_wrt exists:
+      #          - wait for buffer_rdy,
+      #            but abort if buffer_wrt becomes unset (i.e., writer hung up)
+      #          - try to get content from buffer
+      #            - if successful:
+      #              - unset buffer and buffer_rdy
+      #              - set buffer_ack
+      #            - otherwise (i.e., could not read content from buffer):
+      #              - if writer hung up, abort gracefully
+      #              - otherwise (writer seems still to be active)
+      #                - unset buffer and buffer_rdy
+      #                - set buffer_nak (i.e., panic)
+      #                - abort gracefully
+
+      # - repeat while can read fn_wrt file
+      /result := while baton_isset(fn_wrt) do {
+        # - poll buffer_ack or buffer_nak until either exists
+        until baton_isset(fn_rdy) | baton_isunset(fn_wrt)
+          do delay(BATON_PATIENCE)
+        # - handle writer hang-up here
+        if baton_isunset(fn_wrt)
+          then break "baton read: writer hung-up"
+
+        # - try to get content from buffer
+        if content := baton_get(fn_buf)
+          then {
+            BATON_TRACE(&errout, "** baton read received: " || content)
+            if content == char(4)
+              then break BATON_RECEIVED_EOT
+            BATON_TRACE(&errout, "** baton read: image(file) is ", image(file))
+            (content @file) | break BATON_CANNOT_WRITE_OUTPUT
+            baton_unset(fn_buf, BATON_TIMEOUT_MS, Cwarn)
+            baton_unset(fn_rdy, BATON_TIMEOUT_MS, Cwarn)
+            baton_set_nocontent(fn_ack, BATON_TIMEOUT_MS, Cwarn)
+            }
+          else {
+            # - failed to read buffer
+            BATON_TRACE(&errout,
+              "waiting to see whether writer hung-up")
+            # - delay briefly to let fn_wrt disappear
+            delay(BATON_PATIENCE + BATON_PATIENCE)
+            # - unless writer has hung up, remove rdy and buf and set NAK
+            if baton_isunset(fn_wrt)
+              then break BATON_WRITER_HUNG_UP
+            else {
+              # - send NAK
+              # - this should happen only under unusual circumstances
+              baton_unset(fn_buf, BATON_TIMEOUT_MS, Cwarn)
+              baton_unset(fn_rdy, BATON_TIMEOUT_MS, Cwarn)
+              baton_set_nocontent(fn_nak, BATON_TIMEOUT_MS, Cwarn)
+              break "reader has just set NAK"
+              }
+            }
+        }
+
+      # --------- conclude handshake ---------
+      #     handshake 5.2 - abort:
+      #       - unset buffer_ack|buffer_rdr
+      #       - wait (briefly) for buffer_wrt to be unset
+      #       - purge all signal files (e.g., invoke "baton clean")
+      #       - fail on success; produce explanation string on failure
+
+      # either result is &null, when reader quits
+      # or result explains reason why writer should shut down
+      if /result
+        then
+          BATON_TRACE(&errout, "begin shutdown for baton read ", buffer,
+            " because result is: ", image(result))
+
+      # - begin shutdown before assessing why
+      every baton_unset(fn_ack | fn_rdr, BATON_TIMEOUT_MS, Cwarn)
+
+      # wait unless while loop terminated becaue fn_wrt disappeared
+      every i := 1 to 10
+        do
+          if baton_isset(fn_wrt)
+            then delay(BATON_PATIENCE)
+            else break
+
+      # purge all signal files
+      baton("clean", buffer, file)
+
+      # fail (indicating success) if loop terminated becaue fn_wrt unset
+      if /result |
+        result == (BATON_CANNOT_WRITE_OUTPUT | BATON_WRITER_HUNG_UP | BATON_RECEIVED_EOT)
+        then {
+          # response to termination (for any reason): fail
+          fail
+          }
+
+      # assume that writer died without removing its signal file
+      # response: baton produces response (indicating failure)
+      return result
+    }
+  }
+end
+
+$endif # BATON
