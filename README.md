@@ -1,3 +1,6 @@
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7493121.svg)](https://doi.org/10.5281/zenodo.7493121)
+
+
 # Icon "inclusion library"
 
 Incorporate these files into Icon programs using the `$include` preprocessor macro:
