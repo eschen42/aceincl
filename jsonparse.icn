@@ -31,6 +31,8 @@ $define JSONPARSE
 #   - Circular structures are not supported.
 #   - Lists or tables used more than once in a structure will be duplicated
 #     in the JSON generated.
+#   - When the `VNOM` preprocessor symbol is defined, the order of the keys
+#     is preserved (otherwise keys are ordered alphabetically).
 #
 # jsonparse(s) : x
 #
@@ -39,19 +41,24 @@ $define JSONPARSE
 #   JSON text containing true and false (booleans) will have those converted 
 #   to the strings "true" and "false" respectively. 
 #
+#   - When the `VNOM` preprocessor symbol is defined, the order of the keys
+#     of JSON hashes/objects is preserved because a `VNom` is used rather
+#     than a simple Icon table (otherwise keys are ordered alphabetically).
+#
+# character sets
+#
 #   Although these routines should work with UTF-8 strings, nothing is
 #   included here to ensure that UTF-8 is correctly supported.
 #
-#   An Icon string whose Icon characters are from the extension of ASCII
+#   The characters of an Icon string are an extension of ASCII codes
 #   to 256 characters obtained by including the additional characters 
-#   defined by ISO/IEC 8859-1 will henceforth be called a Latin-1 string,
-#   Latin-1 being the first 256 unicode code points. However here, those
+#   defined by ISO/IEC 8859-1 (also called a Latin-1 string), which are
+#   the first 256 unicode code points. However here, those
 #   characters are encoded each as a single Icon character.
 #
-#   Quoted strings inside JSON text are always UTF-8 encoded, with all control
-#   characters escaped using the \uxxxx convention, where xxxx is a string
-#   of four hexadecimal digits indicating a unicode code point. JSON is
-#   defined as a unicode standard.
+#   Quoted strings inside JSON text are always UTF-8 encoded, with all
+#   control characters escaped using the \uxxxx convention, where xxxx is a
+#   string of four hexadecimal digits indicating a unicode code point.
 #
 # the VNOM preprocessor symbol
 #

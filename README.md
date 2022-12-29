@@ -31,7 +31,7 @@ The usual [Icon value type abbreviations](http://www2.cs.arizona.edu/icon/refern
 with one addition:
 
 - VNom(`V`)
-  - see `vnom.icn` below.
+  - see [`vnom.icn`](#vnomicn) below.
 
 ---
 
@@ -132,6 +132,10 @@ Working examples, named `test_*.icn`, are in the `tests` directory:
 processes using five files, one for the message transmitted and the others
 for coordinating transfer.
 
+Note well that nothing precludes locating the baton files on a remote
+filesystem to coordinate processes running on different nodes or
+operating systems.
+
 ### procedure `baton(action:s, filename:s, file:f, warn:C, wait_secs:N) : s|n|fail`
 
 Procedure `baton` provides four distinct modes of action:
@@ -218,9 +222,9 @@ executable to interface a baton to or from a stream, as described below.
 - Otherwise, exit code is 1.
 
 Note that Icon does not catch `SIGPIPE`.
-Consequently, if `baton("read",...)` is feeding a pipe,
+Consequently, *if `baton("read",...)` is feeding a pipe,
 and if the downstream process dies,
-then the Icon process running `baton("read",...)` will die as well!
+then the Icon process running `baton("read",...)` will die as well!*
 This is the motivation for running an output pipe from a separate process
 and coordiating data-passing using a baton.
 
@@ -410,7 +414,7 @@ or with
 `baton_system(basename, cmd, inC, outC) : BatonSys` (a VNom extension)
 
 - This procedure is a VNom initializer producing a VNom that implements
-  BatonSys message handling; i.e., BatonSys extends VNom (from `vnom.icn`)
+  BatonSys message handling; i.e., BatonSys extends VNom (from [`vnom.icn`](#vnomicn))
   such that BatonSys-specific messages are invoked via the vmsg procedure.
 - This procedure is supported by `VNomBatonSysCtor` and  `VNomBatonSysMesg`,
   neither of which need to be invoked directly. The BatonSys-specific
@@ -427,7 +431,7 @@ or with
 
 - This procedure provides the implementation for `baton_system` initialiaztion.
   VNom initializer producing a VNom that implements BatonSys
-  message handling; i.e., BatonSys extends VNom (from `vnom.icn`)
+  message handling; i.e., BatonSys extends VNom (from [`vnom.icn`](#vnomicn))
   such that BatonSys-specific messages are invoked via the vmsg procedure.
 - `Original:T`
   - If not null, a plain table, or another VNom (or extension
@@ -604,9 +608,13 @@ Run command, but do not wait for exit, producing result C
 
 Produce platform-specific path to a tmp directory
 
-### procedure `tmppath() : s`
+### procedure `tmppath(suffix:s, len:s, dir:s) : s1, ...`
 
 Generate platform-specific temporary file path(s)
+
+- `suffix`, suffix appended to path; default: `"tmp"`
+- `len`, number of random digits inserted before suffix; default: `8`
+- `dir`, path to a directory; default: `tmppath()`
 
 ### procedure `which(filename:s, all:n|x) : s1, ...`
 
@@ -638,32 +646,67 @@ Procedures to transform data structures into includable Icon declarations and st
 
 ## jsonparse.icn
 
-Procedures to parse and generate JSON, by
+Procedures to parse and generate JSON, adapted (to support `VNom` tables, see [`vnom.icn`](#vnomicn) below) from work by
 [Carl Sturtivant](https://www-users.cse.umn.edu/~carl/) ([OrcID 0000-0003-1528-4504](https://orcid.org/0000-0003-1528-4504))
 and [Gregg Townsend](https://www2.cs.arizona.edu/~gmt/).
 
 ### procedure `json(L|T|i|n|r|s) : s`
 
-  - Takes data (list|table|integer|string|real|&null) and produces a JSON
-    string defining that data.  It is an error to use another type, even
-    in substructures. See http://json.org/.  To serialize other types,
-    see codeobj.icn from the Icon Programming Library.
+Takes data (`list|table|integer|string|real|&null`) and produces a JSON
+string defining that data.  See http://json.org/.  It is an error
+to use another type, even in substructures.  To serialize other types,
+see `codeobj.icn` from the Icon Programming Library.
+
+Works with Icon data structures constructed from tables and lists
+containing nulls, strings, integers and reals as well as values of
+those last four types.  Note:
+
+- Icon table default values are ignored on conversion to JSON.
+- Circular structures are not supported.
+- Lists or tables used more than once in a structure will be duplicated
+  in the JSON generated.
+- When the `VNOM` preprocessor symbol is defined, the order of the keys
+  is preserved (otherwise keys are ordered alphabetically).
 
 ### procedure `jsonparse(s) : x`
 
-  - Takes a JSON string and produces the corresponding Icon value or
-    structure. Tables in such a structure will have default values of null.
-    JSON text containing true and false (booleans) will have those converted
-    to the strings "true" and "false" respectively.
+Takes a JSON string and produces the corresponding Icon value or
+structure. Tables in such a structure will have default values of null.
+JSON text containing true and false (booleans) will have those converted 
+to the strings "true" and "false" respectively. 
 
-### procedure `jsonIconstringencoding(s) : n`
+- When the `VNOM` preprocessor symbol is defined, the order of the keys
+  of JSON hashes/objects is preserved because a `VNom` is used rather
+  than a simple Icon table (otherwise keys are ordered alphabetically).
 
-  - Fixes the encoding of Icon strings (NOT quoted strings embedded in
-    JSON text) for all subsequent calls of json and jsonparse until
-    jsonIconstringencoding is called again. The initial behavior of
-    json and jsonparse is as if `jsonIconstringencoding("UTF-8")` has
-    been called. Fails unless `map(s)` is either "utf-8" or "utf8" or
-    "latin1" or "latin-1".
+### character sets
+
+Although these routines should work with UTF-8 strings, nothing is
+included here to ensure that UTF-8 is correctly supported.
+
+The characters of an Icon string are an extension of ASCII codes
+to 256 characters obtained by including the additional characters 
+defined by ISO/IEC 8859-1 (also called a Latin-1 string), which are
+the first 256 unicode code points. However here, those
+characters are encoded each as a single Icon character.
+
+Quoted strings inside JSON text are always UTF-8 encoded, with all
+control characters escaped using the \uxxxx convention, where xxxx is a
+string of four hexadecimal digits indicating a unicode code point.
+
+### the `VNOM` preprocessor symbol
+
+Note that (by design) conversion may not be completely symmetric when
+the VNOM preprocessor symbol is defined before this file is included.
+If VNOM is defined, then a "VNom table" (call it `x`) will have a "Kind" of
+"VNom", i.e.,
+```
+"VNom" == x[x, "Kind"]
+"VNom" == vmsg(x, "kind")
+```
+The advantage of a VNom over an ordinary Icon table is that it
+preserves the order of the member keys in a JSON object
+(rather than reordering them alphabetically).
 
 ---
 
@@ -723,7 +766,9 @@ Generate indices where `x` appears in `L`
 
 Procedures to produce/manipulate record-like tables.
 
-See also: `vnom.icn` below for another, potentially more flexible approach.
+See also: [`vnom.icn`](#vnomicn) below for another, potentially more flexible approach.
+
+Used by [`fieldedDataFile.icn`](#fieldeddatafileicn) above because, when it was written, `vnom.icn` had not yet been created.
 
 ### procedure `RecTable(rec_name_s, rec_fields_L, rec_data_L, rec_default_x) : T`
 
@@ -732,8 +777,8 @@ Produce a table with record-like aspects:
 - `rec_name_s`:    the "type" of the RecTable
 - `rec_fields_L`:  a list of the field names
 - `rec_data_L`:    an optional list of values to assign to the fields
-- `rec_col_iL`:    an optional list of column numbers to choose
-                 defaults to all
+- `rec_col_iL`:    an optional list of column numbers to choose;
+                   defaults to all
 - `rec_default_x`: default value for table members
 
 ### procedure `RecTableType(x) : s1, S2, s3, ...`
@@ -777,7 +822,7 @@ Return x, except abort when x is not instance of `type_name`:
 - `x`        : value whose type is to be checked
 - `type_name`: expected string for RecTableType(x)
 - `col_name` : name of identifier-under-test
-- `preamble` : initial string for error message; defaults value of name
+- `preamble` : initial string for error message; defaults to value of name
              RecTablePreamble.
 
 ### procedure `RecTableConstructorC(rec_name_s, rec_fields_L, rec_default_x) : C`
@@ -787,7 +832,7 @@ same length as `rec_fields_L`), produces a RecTable instance:
 
 - `rec_name_s`    the "type" of the RecTable
 - `rec_fields_L`  a list of the field names
-- `rec_col_iL`    an optional list of column numbers to choose,
+- `rec_col_iL`    an optional list of column numbers to choose;
                   defaults to all
 - `rec_default_x` default value for table members
 
@@ -945,8 +990,14 @@ inteface via `baton.icn`, `baton_main.icn`, and `batonsys.icn` to hand
 data back and forth between Icon and sqlite3 without resorting to such
 platform-specific devices such as FIFOs or named-pipes.
 
-For convenience, if the symbol `sl3` is not defined by the preprocessor
-before `sl3.icn` is included, then it is defined as `sl3Msg`:
+By default, baton files are created in the directory whose path is
+returned by `tmpdir()` in [`fileDirIo.icn`](#filedirioicn).  To override
+this behavior, assign a path string to the global variable
+`g_sl3_tmpdir`
+which is defined in `sl3.icn`
+
+For convenience, if the preprocessor symbol `sl3` is not defined by the
+preprocessor before `sl3.icn` is included, then it is defined as `sl3Msg`:
 
 ```
 $ifndef sl3

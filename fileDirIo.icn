@@ -63,8 +63,11 @@ $define _fileDirIo_
 #   procedure tmpdir() : s
 #     Produce platform-specific path to a tmp directory
 #
-#   procedure tmppath(suffix:s, len:s) : s1, ...
+#   procedure tmppath(suffix:s, len:s, dir:s) : s1, ...
 #     Generate temporary file paths
+#       - `suffix`, suffix appended to path; default: "tmp"
+#       - `len`, number of random digits inserted before suffix; default: 8
+#       - `dir`, path to a directory; default: tmppath()
 #
 #   procedure which(filename:s, all:n|x) : s1, ...
 #     Generate full path(s) for filename on PATH
@@ -298,7 +301,7 @@ procedure tmpdir() #: return platform-specific path to a tmp directory
     else
       # inspired by answers to https://unix.stackexchange.com/q/352107
       #   because some unixes do not define  TMPDIR, TMP, or TEMP
-      return (getenv("TMPDIR" | "TMP" | "TEMP") | "/tmp") || path_separator()
+      return (getenv("TMPDIR" | "TMP" | "TEMP") | "/tmp")
 end
 
 procedure tmppath(suffix, len, dir) #: generate temporary file paths

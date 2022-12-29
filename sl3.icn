@@ -58,7 +58,13 @@ $define SL3
 # data back and forth between Icon and sqlite3 without resorting to such
 # platform-specific devices as FIFOs or named-pipes.
 #
-# For convenience, if the symbol "sl3" is not defined by the preprocessor
+# By default, baton files are created in the directory whose path is
+# returned by `tmpdir()` in fileDirIo.icn.  To override
+# this behavior, assign a path string to the global variable
+# `g_sl3_tmpdir`
+# which is defined in this file.
+# 
+# # For convenience, if the symbol "sl3" is not defined by the preprocessor
 # before "sl3.icn" is included, then it is defined as "sl3msg", which
 # is the actual identifier for the implementation here; this header
 # assumes this definition.
@@ -182,7 +188,14 @@ $define SL3
 ############################################################################
 #
 # Preprocessor symbols defined in this file:
-#   - SL3_TRACE if defined, should look like `write` or `&fail`
+#   - SL3_TRACE, if defined, should look like `write` or `&fail`
+#   - SL3_EOT, if defined, should be a string defining a line not expected
+#     in output of commands or queries; default is "."
+#
+# Global identifiers defined in this file:
+#   - g_sl3_tmpdir if set, should be the path to a directory in which temp-
+#     orary baton files may be created; default is the string produced by
+#     `tmppath()` from fileDirIo.icn
 #
 ############################################################################
 #
@@ -204,7 +217,7 @@ link strings
 #   Replaces all occurrences of s2 in s1 by s3; fails when s2 is null.
 
 $ifndef _fileDirIo_
-  # need fileDirIo.icn for which, tmppath
+  # need fileDirIo.icn for which and tmppath
   $include "fileDirIo.icn"
 $endif
 
@@ -238,39 +251,12 @@ $ifndef SL3_TRACE
   #$define SL3_TRACE write 
 $endif # SL3_TRACE
 
-# query result handler
-#   prerequisite: after sending DQL to db, send ".print '[]'"
-procedure sl3ReadResult(fin, errC)
-  local ob
-  ob := read(fin) || "\n"
-  # error messages are not JSON, so do not begin with square brackets
-  if not (ob[1] == "[")
-    then {
-      # trim off the newline when reporting the error message
-      ob[1:-1] @ \errC
-      fail
-      }
-  # handle a single-line result
-  if ob[-2] == "]"
-    then return 1(ob, sl3ReadEmptyResult(fin, errC))
-  # concatenate a multiple-line result
-  until not (ob ||:= (read(fin)||"\n")) do
-    if ob[-2] == "]"
-      then return 1(ob, sl3ReadEmptyResult(fin, errC))
-  "sl3ReadResult failed" @ \errC
-end
+$ifndef SL3_EOT
+  #$define SL3_EOT "[]"
+  $define SL3_EOT "." 
+$endif # SL3_EOT
 
-# non-query non-result handler
-#   prerequisite: after sending DDL|DML|DCL to db, send ".print '[]'"
-#     write(fout, ".print '[]'",)
-procedure sl3ReadEmptyResult(batonsys, errC, noDotPrint)
-  local ob
-  while ob := vmsg(batonsys, "receive")
-    do
-      if ob == "[]"
-        then return
-  "sl3ReadEmptyResult failed" @ \errC
-end
+global g_sl3_tmpdir
 
 procedure sl3new(path, options, errC)
   return sl3msg(&null, "open", path, options, errC)
@@ -295,11 +281,10 @@ procedure sl3msg(cnxn, command, arg1, arg2, arg3)
       #     - Construct and produce new SQLite3 instance.
       #   - path : s (or &null)
       #     - Path to (possibly not-yet-existing) sqlite3 database.
-      #     - When &null, path defaults to ":memory:", an in-memory temp
-      #       database.
+      #     - When &null, defaults to ":memory:", an in-memory temp database.
       #   - options : s (or &null)
-      #     - Additional options to be passed on the command line to sqlite3
-      #     - When &null, only standard options will be passed.
+      #     - Additional options to be passed on the command line to sqlite3.
+      #     - When &null, only standard options (-batch -json) will be passed.
       #   - errC : C
       #     - Co-expression to which error message strings will be
       #       transmitted.
@@ -326,7 +311,7 @@ procedure sl3msg(cnxn, command, arg1, arg2, arg3)
 
       cnxn["batonsys"] :=
         baton_system(
-          tmppath(),
+          sl3_baton_system_tmppath(),
           "sqlite3 " || arg2 || " " || arg1,
           &current,
           &current
@@ -439,7 +424,7 @@ procedure sl3msg(cnxn, command, arg1, arg2, arg3)
 
       # send query or command to sqlite3
       if /arg2
-        then @( errC := arg2 := create while write(&errout, @&source) )
+        then @(errC := arg2 := create while write(&errout, @&source))
         else errC := arg2 # assume that arg2 has already been activated
       if (type(arg1) == "list", type(command) == "string")
         then {
@@ -512,7 +497,7 @@ procedure sl3msg(cnxn, command, arg1, arg2, arg3)
       SL3_TRACE(&errout, "sl3msg - sending command:\n", command)
       command @cnxn["batonsys", "Csend"]
       # send "print end-of-results" command to sqlite3
-      ".print []" @cnxn["batonsys", "Csend"]
+      sl3_transmit(".print " || SL3_EOT, cnxn["batonsys", "Csend"])
       # initialize result list for non-JSON results
       cnxn["rows"] := []
       # initialize row-counter for non-JSON results
@@ -520,7 +505,7 @@ procedure sl3msg(cnxn, command, arg1, arg2, arg3)
       # initialize string-builder for JSON results
       unparsed := ""
       # receive lines until "end-of-results" sentinel is encountered
-      while "[]" ~=== (chunk := vmsg(cnxn["batonsys"], "receive"))
+      while SL3_EOT ~=== (chunk := vmsg(cnxn["batonsys"], "receive"))
         do {
           SL3_TRACE(&errout, "  sl3msg - received chunk:\n    ", chunk)
           # When JSON is a possibility; append chunk to unparsed
@@ -551,6 +536,7 @@ procedure sl3msg(cnxn, command, arg1, arg2, arg3)
     }
 end
 
+# convenience/legibility function, because @ has greater precedence than ||
 procedure sl3_transmit(s, errC)
   if \errC
     then {
@@ -699,4 +685,9 @@ procedure sl3_prep_tmplt()
           tab(any(nosq)) || sl3_prep_tmplt()
 end
 
+# procedure to create paths to baton files passed to baton_system
+procedure sl3_baton_system_tmppath()
+  \g_sl3_tmpdir := tmpdir()
+  return tmppath( , , g_sl3_tmpdir)
+end
 $endif # SL3
