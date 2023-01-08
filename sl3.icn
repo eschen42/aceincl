@@ -298,24 +298,25 @@ procedure sl3msg(cnxn, command, arg1, arg2, arg3)
           "yes",    # Disposable - this requires disposal via "close"
           "SQLite3" # Kind       - set to SQLite3 for all instances
           ) | fail
-      /arg1 := ":memory:" # open in-memory database
+      # default is to open in-memory database
+      /arg1 := ":memory:"
+      vmsg(cnxn, "put", "path", arg1)
       /arg2 := "" # options passed to command line before path to database
       # it may be impossible to specify tcl output mode with switches
       arg2 ||:= " -batch -json"
       errC := arg3
-      # initialize keys; set values to &null
-      every vmsg(cnxn, "put", !["batonsys", "rows", "disposition"], &null)
 
       # instantiate BatonSys for sqlite3 and abort on error
       # baton_system(basename:s, cmd:s, stdin:C, stdout:C) : BatonSys
 
-      cnxn["batonsys"] :=
+      vmsg(cnxn, "put", "batonsys",
         baton_system(
           sl3_baton_system_tmppath(),
           "sqlite3 " || arg2 || " " || arg1,
           &current,
           &current
           )
+        )
 
       if \(@cnxn["batonsys", "Cexit"])
         then {
@@ -325,6 +326,9 @@ procedure sl3msg(cnxn, command, arg1, arg2, arg3)
             )
           runerr(500, "batonsys constructor failed for sqlite3")
           }
+
+      # initialize keys having &null values
+      every vmsg(cnxn, "put", !["rows", "disposition"], &null)
 
       # initial set-up for prepared statemeents
       sl3msg(cnxn, ".param init")

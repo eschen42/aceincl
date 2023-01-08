@@ -55,12 +55,14 @@ procedure main(args)
       #   get data, launch pipeline, and produce results
       f_in := open("test_baton.dat", "r") | 
         stop("failed to open input file \"test_baton.dat\"")
-      # - instantiate child pipes
-      BATON_TRACE(&errout, "test_baton: invoke \"", BATON_INVOKE || " write test_baton_buf", "\"")
-      f_write := open(BATON_INVOKE || " write test_baton_buf", "wp")
-      BATON_TRACE(&errout, "test_baton: invoke \"baton_main read\"")
-      f_read  := open(BATON_INVOKE || " read  test_baton_buf", "rp")
-      BATON_TRACE(&errout, "test_baton: invoked \"baton_main read\"")
+
+       # - instantiate child pipes
+       BATON_TRACE(&errout, "test_baton: invoke \"", BATON_INVOKE || " write test_baton_buf", "\"")
+       f_write := open(BATON_INVOKE || " write test_baton_buf", "wp")
+       BATON_TRACE(&errout, "test_baton: invoke \"baton_main read\"")
+       f_read  := open(BATON_INVOKE || " read  test_baton_buf", "rp")
+       BATON_TRACE(&errout, "test_baton: invoked \"baton_main read\"")
+
       # - put each line into write pipe and retrieve it from read pipe
       every write(f_write, !f_in) do {
         delay(BATON_PATIENCE)
@@ -68,11 +70,21 @@ procedure main(args)
         write(&output, read(f_read) | "*** test_baton: read(f_read) failed")
         BATON_TRACE(&errout, "*** test_baton: returned from reading fread")
         }
+
+      # close the batons (test passes even when this is not done, as it should)
+      BATON_TRACE(&errout, "test_baton: baton files before baton close:\n") & system("1>&2 ls test_baton_buf*")
+      BATON_TRACE(&errout, "\n*** test_baton: invoking baton close")
+      system(BATON_INVOKE || " close  test_baton_buf 1") & delay(50)
+      BATON_TRACE(&errout, "test_baton: baton files after baton close:\n") & system("1>&2 ls test_baton_buf*")
+
       # - close the pipes (f_write before f_read so it does not block)
+      BATON_TRACE(&errout, "\n*** test_baton: closing the pipes")
       every image_close(f_in | f_write | f_read)
+
       # - run clean which does nothing substantial unless reader or writer failed
       BATON_TRACE(&errout, "*** test_baton: invoking baton clean")
       baton("clean", "test_baton_buf")
+
       # - farewell
       BATON_TRACE(&errout, "baton: main([]) exits now")
       exit(0)

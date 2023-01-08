@@ -90,6 +90,12 @@ $define BATON
 #   - file argument is ignored even if not &null
 #   - This action is experimental and may be of no practical value.
 #
+# baton("close", buffer:s, file:f|C, warn:C, wait_secs:N) : s | fail
+#   - write "end-of-text (ASCII character 4) to file named by buffer
+#   - file, buffer, warn and wait_secs as above.
+#     - file may be (and likely best is) &null
+#   - produces an error string only if unsuccessful (fails otherwise)
+#
 # baton("clean", buffer:s, file:n|x, warn:C) : fail
 #   - cleans up coordination files that may be left behind when "write" or
 #     "read" is interrupted before they can delete these files
@@ -122,7 +128,7 @@ $define BATON
 #       - Set by "read" when waiting for buffer_wrt to be created by
 #         "write".
 #   - buffer_wrt
-#       - Set by "write" after detecting buffer_ack, when waiting for 
+#       - Set by "write" after detecting buffer_ack, when waiting for
 #         buffer_rdr to be created by "read".
 #       - Unset by "write" as it prepares to quit.
 #       - If it disappears, "read" should:
@@ -221,6 +227,9 @@ $define BATON
 #   - BATON_TIMEOUT_MS if defined, timeout after this number of milliseconds
 #     - default, 200 ms
 #   - BATON_TRACE if defined, should look like `write` or `&fail`
+#   - BATON_WAIT_SECS_DEFAULT if defined, sets seconds to wait to connect;
+#     when undefined, is set to -1.0; when < -0.999, indicates unlimited
+#     time to connect.
 #   - BATON_HANDSHAKE_ADJUST if defined, adjusts testing condition where
 #     BATON_HANDSHAKE_TIMEOUT succeeds
 #   - BATON_HANDSHAKE_TIMEOUT if defined, expression that should succeed
@@ -255,7 +264,9 @@ $ifdef UNDEFINED
     $define BATON_TRACE writes(&errout, "baton ", g_baton_action, " ", g_baton_buffer, ": ") & write
   $endif # BATON_TRACE
 $else
-  $define BATON_TRACE &fail
+  $ifndef BATON_TRACE
+    $define BATON_TRACE &fail
+  $endif # BATON_TRACE
 $endif # UNDEFINED
 
 $define BATON_READER_HUNG_UP "reader hung up"
@@ -365,7 +376,10 @@ procedure baton_unset(filename, timeout, warn)
     do
       if baton_isunset(filename)
         then return                 # return &null
-        else delay(BATON_PATIENCE)
+        else {
+          remove(filename)
+          delay(BATON_PATIENCE)
+          }
   # fail to produce a result
   "" @\warn # ensure that warn has been activated at least once
   ( "WARNING: baton_get(" ||
@@ -384,16 +398,25 @@ procedure baton_get(filename)
     then {
       BATON_TRACE(&errout, "baton_get opened " || filename)
       # read length of content (or fail when content is invalid)
-      i := read(f) | return &null # why doesnt `fail` work here?
+      i := read(f) | {
+        write(&errout, "baton_get: read(f) failed")
+        return &null
+        }
+      (i := integer(i)) | return &null # why doesnt `fail` work here?
       BATON_TRACE(&errout, "baton_get read length from " || filename)
       # read content, if any (otherwise, there's no header)
       content := reads(f, 0 < i) | ""
       close(f)
       # handle no-content case
+      if /content
+        then write(&errout, "baton_get found NULL content in " || filename)
       \content | return &null
       BATON_TRACE(&errout, "baton_get found not-null content in " || filename)
       # validate content-length (or fail when content is invalid)
-      i = *content | fail
+      i = *content | {
+        write(&errout, "baton_get: i = ", i, " but *content = ", *content)
+        fail
+        }
       BATON_TRACE(&errout, "baton_get found valid content in " || filename)
       # produce content
       return content
@@ -410,8 +433,13 @@ procedure baton_isset(filename)
   return (close(open(filename)), &null)
 end
 
+$ifndef BATON_WAIT_SECS_DEFAULT
+  # number of seconds that, when multiplied by 1000.0, will be < -999
+  $define BATON_WAIT_SECS_DEFAULT -1.0
+$endif # BATON_WAIT_SECS_DEFAULT
+
 $ifndef BATON_HANDSHAKE_TIMEOUT
-  $define BATON_HANDSHAKE_TIMEOUT (0 > \wait_secs)
+  $define BATON_HANDSHAKE_TIMEOUT (-999 < (0 > \wait_secs))
 $endif # BATON_HANDSHAKE_TIMEOUT
 
 $ifndef BATON_HANDSHAKE_ADJUST
@@ -420,6 +448,7 @@ $endif # BATON_HANDSHAKE_ADJUST
 #       action    buffer    file      Cwarn   wait_secs
 # baton("write",  buffer:s, file:f|C, warn:C, wait_secs:N) : s | fail
 # baton("read",   buffer:s, file:f|C, warn:C, wait_secs:N) : s | fail
+# baton("close",  buffer:s, file:f|C, warn:C, wait_secs:N) : s | fail
 # baton("select", buffer:s, file:n|x, warn:C, wait_secs:N) : n | fail
 # baton("clean",  buffer:s, file:n|x, warn:C               ) : fail
 procedure baton(action, buffer, file, Cwarn, wait_secs)
@@ -434,7 +463,7 @@ procedure baton(action, buffer, file, Cwarn, wait_secs)
   # One possible alternative:
   #   create repeat write(&errout, @&source) | @&main
   /Cwarn := BATON_CWARN
-  /wait_secs := 10
+  /wait_secs := BATON_WAIT_SECS_DEFAULT
   wait_secs *:= 1000.0
   BATON_TRACE(&errout,
     "^^^ baton.icn: baton ", action, " ", buffer, " ", image(wait_secs))
@@ -463,8 +492,9 @@ procedure baton(action, buffer, file, Cwarn, wait_secs)
   fn_nak := buffer || "_nak"  # reader signals failed read, listening
 
   # restrict action to "read" or "write"
-  if not (action === ("read" | "write" | "clean"))
-    then return "usage: baton 'read'|'write'|'clean'|'select' buffer:s file:f|C|n"
+  if not (action === ("read" | "write" | "clean" | "close"))
+    then return "usage: baton 'read'|'write'|'clean'|'select'|'close' _
+           buffer:s file:f|C|n"
 
   # branches for "clean", "read", and "write" behavior
   case action of {
@@ -493,7 +523,7 @@ procedure baton(action, buffer, file, Cwarn, wait_secs)
       }
 
     ### baton write ### ---------------------------------------------------
-    "write" : {
+    "write" | "close" : {
       # write via buffer
       # writer by default reads lines from &input
       /file := &input
@@ -510,7 +540,8 @@ procedure baton(action, buffer, file, Cwarn, wait_secs)
 
       # - wait indefinitely for deletion of any stale rdr signal by reader
       content := &null
-      until not baton_isset(fn_rdr)
+      until action == "close" |
+            not baton_isset(fn_rdr)
         do {
           if /content
             then
@@ -521,12 +552,14 @@ procedure baton(action, buffer, file, Cwarn, wait_secs)
 
       # - wait indefinitely for creation of ACK signal, by reader
       content := &null
-      until BATON_HANDSHAKE_TIMEOUT | baton_isset(fn_ack)
+      until action == "close" |
+            BATON_HANDSHAKE_TIMEOUT |
+            baton_isset(fn_ack)
         do {
           if /content
             then
               BATON_TRACE(&errout,
-                content := "waiting for " || fn_ack)
+                content := "baton " || action || " waiting for " || fn_ack)
           delay(BATON_PATIENCE)
           BATON_HANDSHAKE_ADJUST
           }
@@ -574,7 +607,7 @@ procedure baton(action, buffer, file, Cwarn, wait_secs)
 
       if /result
         then BATON_TRACE(&errout, "received fn_rdr from reader")
-        else write(&errout, "baton write ", fn_buf, ": ", image(result))
+        else BATON_TRACE(&errout, "baton write ", fn_buf, ": ", image(result))
 
       content := &null
 
@@ -617,52 +650,53 @@ procedure baton(action, buffer, file, Cwarn, wait_secs)
         BATON_TRACE(&errout, "invoking @file")
 
         # read lines when possible; otherwise, mark end-of-transmission
-        content := @file | char(4) # EOT (^D)
+        content :=
+          if action == "close"
+            then char(4) # EOT (^D)
+            else @file | char(4)
         BATON_TRACE(&errout, "invoked @file")
 
-            # check that reader didn't die, e.g., when @file is too slow
-            if baton_isunset(fn_rdr)
-              then break BATON_READER_HUNG_UP
+        # check that reader didn't die, e.g., when @file is too slow
+        if baton_isunset(fn_rdr)
+          then break BATON_READER_HUNG_UP
 
-            # set buffer - this should not fail
-            BATON_TRACE(&errout,
-              "** baton write: calling \"baton_set " || fn_buf || "\""
-              )
+        # set buffer - this should not fail
+        BATON_TRACE(&errout,
+          "** baton write: calling \"baton_set " || fn_buf || "\""
+          )
 
-            BATON_TRACE(&errout, "try to set content")
-            # try thrice to set content
-            every i := 3 to 1 by -1
-              do {
-                if baton_set(fn_buf, content, BATON_TIMEOUT_MS, Cwarn)
-                  then break
-                if i := 1
-                  then break break "buffer-write failed for " || fn_buf
-                }
+        BATON_TRACE(&errout, "try to set content")
+        # try thrice to set content
+        every i := 3 to 1 by -1
+          do {
+            if baton_set(fn_buf, content, BATON_TIMEOUT_MS, Cwarn)
+              then break
+            if i := 1
+              then break break "buffer-write failed for " || fn_buf
+            }
 
-            BATON_TRACE(&errout, "did set content")
-            # at a minimum, buf should have a single content with an integer
-            # otherwise, baton_get produces &null.
-            # baton_get fails if buffer content is invalid
-            f := baton_get(fn_buf) |
-              break "baton_get failed for " || fn_buf
+        BATON_TRACE(&errout, "did set content")
+        # at a minimum, buf should have a single content with an integer
+        # otherwise, baton_get produces &null.
+        # baton_get fails if buffer content is invalid
+        f := baton_get(fn_buf) |
+          break "baton_get failed for " || fn_buf
 
-            \f | break "\"baton_get " || fn_buf || "\" produced null"
+        \f | break "\"baton_get " || fn_buf || "\" produced null"
 
-            f == content | break "content validation failed for " || fn_buf
-            content := &null
+        f == content | break "content validation failed for " || fn_buf
+        content := &null
 
-            BATON_TRACE(&errout, "setting fn_rdy")
-            # signal that buffer is ready for reader
-            baton_set_nocontent(fn_rdy, BATON_TIMEOUT_MS, Cwarn) | break "buffer-ready set failed"
-            BATON_TRACE(&errout, "did set fn_rdy")
-        # repeat
-        next
+        BATON_TRACE(&errout, "setting fn_rdy")
+        # signal that buffer is ready for reader
+        baton_set_nocontent(fn_rdy, BATON_TIMEOUT_MS, Cwarn) | break "buffer-ready set failed"
+        BATON_TRACE(&errout, "did set fn_rdy")
+        # repeat `while baton_isset(fn_rdr)`
         }
 
       # either result is &null, when reader quits (deleting fn_rdr)
       # or result explains reason why writer should shut down
-
-      if /result
+      if \result
         then
           BATON_TRACE(&errout, "begin shutdown for baton write ", buffer,
             " because result is: ", image(result)
@@ -692,8 +726,13 @@ procedure baton(action, buffer, file, Cwarn, wait_secs)
                 else break
           }
         else
-          if (BATON_INPUT_EOF ~== result, BATON_READER_HUNG_UP ~== result)
+          if (
+            BATON_INPUT_EOF ~== result,
+            BATON_READER_HUNG_UP ~== result
+            )
             then write(&errout, result)
+
+       BATON_TRACE(&errout, "baton " || action || ": result is \"", result, "\"")
 
        # if reader hung up, invoke baton "clean"
        if baton_isset(fn_rdr)
@@ -810,15 +849,15 @@ procedure baton(action, buffer, file, Cwarn, wait_secs)
 
       # - repeat while can read fn_wrt file
       /result := while baton_isset(fn_wrt) do {
-        # - poll buffer_ack or buffer_nak until either exists
-        until baton_isset(fn_rdy) | baton_isunset(fn_wrt)
+        # - poll buffer_rdy or buffer_wrt until either exists
+        until baton_isunset(fn_wrt) | baton_isset(fn_rdy)
           do delay(BATON_PATIENCE)
         # - handle writer hang-up here
         if baton_isunset(fn_wrt)
           then break "baton read: writer hung-up"
 
         # - try to get content from buffer
-        if content := baton_get(fn_buf)
+        if \(content := (baton_isset(fn_buf), baton_get(fn_buf)))
           then {
             BATON_TRACE(&errout, "** baton read received: " || content)
             if content == char(4)

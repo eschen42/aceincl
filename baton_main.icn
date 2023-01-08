@@ -58,16 +58,30 @@ $define BATON_MAIN
 #   ating the transfer (in a manner inspired by RS-232).
 #
 #   Usage:
-#     baton read  bufferfile [timeout_sec]
-#     baton write bufferfile [timeout_sec]
-#     baton clean bufferfile
+#     baton read   bufferfile [handshake_timeout_secs]
+#     baton write  bufferfile [handshake_timeout_secs]
+#     baton close  bufferfile [handshake_timeout_secs]
+#     baton select bufferfile [success_timeout_secs]
+#     baton clean  bufferfile
 #
-#     write reads from standard input into bufferfile in coordination with
-#         read, which copies from bufferfile to standard output. Optional
-#         timeout in seconds for initial handshake.
+#       'write' reads from standard input into bufferfile in coordination
+#           with 'read', which copies from bufferfile to standard output.
+#           When supplied, handshake_timeout_secs specifies number of
+#           seconds to wait for initial handshake.
 #
-#     clean removes coordination files that may remain when
-#         read or write experiences abnormal termination
+#       'close' explicitly initiates
+#           shutdown of 'baton read' when used independently of
+#           'baton write'; it is NOT required when 'baton write' is used.
+#
+#       'select' returns a zero exit code only when data are
+#           available to read.
+#           When supplied, handshake_timeout_secs specifies number of
+#           seconds to wait for success.
+#           It is possible that this is not useful unless 'baton write' is
+#           NOT paired with 'baton read'.
+#
+#       'clean' removes coordination files that may remain when
+#           read or write experiences abnormal termination.
 #
 #   Build:
 #     The `main` procedure is identified using a preprocessor macro.
@@ -77,8 +91,8 @@ $define BATON_MAIN
 #       $include "baton_main.icn"
 #    
 #     Step 2. Translate:
-#       icont -u -o baton baton_main.icn      # on Unix-like OSs
-#       icont -u -o baton.exe baton_main.icn  # on MS Windows
+#       icont -u -o baton baton_main_build.icn      # on Unix-like OSs
+#       icont -u -o baton.exe baton_main_build.icn  # on MS Windows
 #
 #   The resulting program can be used as in the following (trivial) example:
 #     $include "fileDirIo.icn"
@@ -239,28 +253,39 @@ procedure baton_main(args)
   local f_in, f_write, f_read, rslt
   if 2 > *args | not args[1] == ("read" | "write" | "clean" | "select")
     then {
-      write(&errout, "usage: " || &progname || " read   bufferfile [timeout_secs]")
-      write(&errout, "       " || &progname || " write  bufferfile [timeout_secs]")
-      write(&errout, "       " || &progname || " select bufferfile [timeout_secs]")
-      write(&errout, "       " || &progname || " clean  bufferfile")
+      every rslt := prog_path_parts()
+      write(&errout, "usage: " || rslt ||
+        " read   bufferfile [handshake_timeout_secs]")
+      write(&errout, "       " || rslt ||
+        " write  bufferfile [handshake_timeout_secs]")
+      write(&errout, "       " || rslt ||
+        " select bufferfile [successtimeout_secs]")
+      write(&errout, "       " || rslt ||
+        " close  bufferfile [handshake_timeout_secs]")
+      write(&errout, "       " || rslt ||
+       " clean  bufferfile")
       write(&errout, "")
-      write(&errout,
-        "    write reads from standard input into bufferfile in")
-      write(&errout,
-        "        coordination with read, which copies from")
-      write(&errout,
-        "        bufferfile to standard output.")
-      write(&errout, "")
-      write(&errout,
-        "    clean removes coordination files that may remain when")
-      write(&errout,
-        "        read or write experiences abnormal termination")
-      write(&errout, "")
-      write(&errout,
-        "    select returns a zero exit code only when")
-      write(&errout,
-        "        data are available to read")
-      write(&errout, "")
+      rslt := [
+        "'write' reads from standard input into bufferfile in coordination",
+        "    with 'read', which copies from bufferfile to standard output.",
+        "    When supplied, handshake_timeout_secs specifies number of",
+        "    seconds to wait for initial handshake.",
+        "",
+        "'close' explicitly initiates shutdown of 'baton read'",
+        "    when used independently of 'baton write';",
+        "    it is NOT required when 'baton write' is used.",
+        "",
+        "'select' returns a zero exit code when data are available to read.",
+        "    'handshake_timeout_secs', when supplied, specifies number of",
+        "    seconds to wait for success.",
+        "    It is possible that this is not useful unless 'baton write' is",
+        "    NOT paired with 'baton read'.",
+        "",
+        "'clean' removes coordination files that may remain when",
+        "    read or write experiences abnormal termination.",
+        ""
+        ]
+      every write(&errout, !rslt)
       exit(1)
       }
   # program was invoked with arguments;
@@ -298,8 +323,9 @@ end
 procedure baton_flatware(args)
   # deduce whether args are patterned for invocation of baton_main;
   #   if not, fail
-  if 3 ~= *args | not args[1] == "baton_main" |
-    not args[2] == ("read" | "write" | "clean" | "select")
+  if 3 > *args |
+    not (args[1] == "baton_main") |
+    not (args[2] == ("read" | "write" | "clean" | "select"))
     then fail
   # remove the sentinel "baton_main" argument
   pop(args)

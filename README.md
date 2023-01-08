@@ -147,23 +147,30 @@ Procedure `baton` provides four distinct modes of action:
         action    buffer    file      Cwarn   wait_secs
   baton("write",  buffer:s, file:f|C, warn:C, wait_secs:N) : s|fail
   baton("read",   buffer:s, file:f|C, warn:C, wait_secs:N) : s|fail
+  baton("close",  buffer:s, file:f|C, warn:C, wait_secs:N) : s|fail
   baton("select", buffer:s, file:n|x, warn:C, wait_secs:N) : n|fail
-  baton("clean",  buffer:s, file:n|x, warn:C               ) : fail
+  baton("clean",  buffer:s, file:n|x, warn:C             ) : fail
 ```
 
 Usages:
 
-#### `action == "write"`
+#### `action == ("write" | "close")`
 
-`baton("write", buffer:s, file:f|C, warn:n|C, wait_secs:N) : s | fail`
+```
+baton("write", buffer:s, file:f|C, warn:n|C, wait_secs:N) : s|fail
+baton("close", buffer:s, file:f|C, warn:n|C, wait_secs:N) : s|fail
+```
 
-Copy input from `file` to file named by `buffer`
+"write": Copy input from `file` to file named by `buffer`
+
+"close": Send EOT (ASCII character 4) to file named by `buffer`
 
 - `file` is optional; default is `&input`
   - `file:f` is a file open for reading
   - `file:C` is a co-expression producing string values,
     - e.g.:  `file := create !&input`
     - `file:C` is permitted to produce values containing multiple newlines
+  - `file` may best be `&null` for `action == "close"`
 - `buffer` argument is required
 - `warn` argument may be `&null` or a co-expression that can handle
   transmitted warning strings, e.g.:
@@ -175,7 +182,7 @@ Copy input from `file` to file named by `buffer`
 
 #### `action == "read"`
 
-`baton("read", buffer:s, file:f|C, warn:n|C, wait_secs:N) : s | fail`
+`baton("read", buffer:s, file:f|C, warn:n|C, wait_secs:N) : s|fail`
 
 Copy output from file named by `buffer` to `file`
 
@@ -188,7 +195,7 @@ Copy output from file named by `buffer` to `file`
 
 #### `action == "select"`
 
-`baton("select", buffer:s, file:n|x, warn:n|C, wait_secs:N) : n | fail`
+`baton("select", buffer:s, file:n|x, warn:n|C, wait_secs:N) : n|fail`
 
 - produces `&null` only when data are available for reading from buffer
 - `buffer` and `warn` arguments as for "write".
@@ -236,26 +243,33 @@ and coordiating data-passing using a baton.
 ```
 baton read   bufferfile [handshake_timeout_secs]
 baton write  bufferfile [handshake_timeout_secs]
+baton close  bufferfile [handshake_timeout_secs]
 baton select bufferfile [success_timeout_secs]
 baton clean  bufferfile
 
-  write reads from standard input into bufferfile in coordination with
-      read, which copies from bufferfile to standard output.
+  'write' reads from standard input into bufferfile in coordination with
+      'read', which copies from bufferfile to standard output.
       When supplied, handshake_timeout_secs specifies number of seconds
       to wait for initial handshake.
 
-  select returns a zero exit code only when data are
+  'close' explicitly initiates
+      shutdown of 'baton read' when used independently of 'baton write';
+      it is NOT required when 'baton write' is used.
+
+  'select' returns a zero exit code only when data are
       available to read.
       When supplied, handshake_timeout_secs specifies number of seconds
       to wait for success.
+      It is possible that this is not useful unless 'baton write' is not
+      paired with 'baton read'.
 
-  clean removes coordination files that may remain when
+  'clean' removes coordination files that may remain when
       read or write experiences abnormal termination.
 ```
 
-*Building baton program*
+*Building baton program* (if desired)
 
-Create a file `baton_main_build.icn` containing:
+You may create a file `baton_main_build.icn` containing:
 ```
 $define baton_main main
 $include "baton_main.icn"
@@ -372,9 +386,9 @@ The following exemple demonstrates invocation of `baton_flatware(args)` from wit
         if chunk == "[]"
           then break write(PLOVER)
           else write(chunk)
-    # Close the output baton
+    # Close the output baton (has same effect as 'baton close')
     char(4) @Csend
-    # Close the input baton to clean up baton files.
+    # Close the input baton to clean up coordination files.
     @Crecv
     # Wait (briefly) for process exit and retrieve exit code.
     every 1 to 5
