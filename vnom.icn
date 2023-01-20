@@ -292,9 +292,18 @@ procedure VNomMesg(args[])
   local metamethod                        # possibly override this proc.
   local val                               # pulled or popped val
   local nargs                             # "excess" args beyond first two
-  if *args < 2 then stop("*args < 2")     # need at least V and message
+  if *args < 2                            # need at least V and message
+    then {
+      &dump := 1
+      stop("VNomMesg() from vnom.icn: *args < 2")
+      }
   nargs := *args - 2                      # count of args beyond V and msg
   V := args[1]                            # extract VNom from args
+  if "table" ~== type(V)
+    then {
+      &dump := 1
+      stop("VNomMesg() from vnom.icn: first arg of type ", image(type(V)))
+      }
   message := args[2]                      # extract message from args
   if /V[V]                                # coerce ordinary table to get
     then V := VNomCtor(V)                 #   the same interface as VNom

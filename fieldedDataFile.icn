@@ -9,84 +9,179 @@ $define _fieldedDataFile_
 #
 #   Author:   Arthur C. Eschenlauer
 #
-#   Date:     September 8, 2021
+#   Date:     January 20, 2023
 #
 ############################################################################
 #
-#   This file is in the public domain.
+# SPDX-License-Identifier: CC-PDDC
+#   https://spdx.org/licenses/CC-PDDC.html
 #
-#   SPDX-License-Identifier: CC-PDDC
-#     https://spdx.org/licenses/CC-PDDC.html
+# This file is in the public domain. Art Eschenlauer has waived all
+# copyright and related or neighboring rights to:
+#   fieldedDataFile.icn - Procedures to produce logical lines or fields
+#             from formatted data files
+# For details, see:
+#   https://creativecommons.org/publicdomain/zero/1.0/
+#
+# If you require a specific license and public domain status is not suffi-
+# cient for your needs, please substitute the MIT license (see below), bearing
+# in mind that the copyright "claim" is solely to meet your requirements
+# and does not imply any restriction on use or copying by the author:
+#
+#   Copyright (c) 2022, Arthur Eschenlauer
+#
+#   Permission is hereby granted, free of charge, to any person obtaining
+#   a copy of this software and associated documentation files (the
+#   "Software"), to deal in the Software without restriction, including
+#   without limitation the rights to use, copy, modify, merge, publish,
+#   distribute, sublicense, and/or sell copies of the Software, and to
+#   permit persons to whom the Software is furnished to do so, subject
+#   to the following conditions:
+#
+#   The above copyright notice and this permission notice shall be
+#   included in all copies or substantial portions of the Software.
+#
+#   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+#   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+#   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
+#   IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+#   CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+#   TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+#   SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #
 ############################################################################
 #
 #   record FieldedData(lines, fields)
 #     A record that holds two co-expression factories
+#     - lines  === csvLines  | tabularLines  | iniLines
+#     - fields === csvFields | tabularFields | iniFields
 #
 #   procedure FieldedDataFactory(format, filePath) :  FieldedData
 #     Returns FieldedData for file at filePath according to format;
-#     formula == ( "tabular" | "ini" | stop() )
+#     formula == ( "csv" | "tabular" | "ini" | stop() )
+#
+#   procedure csvLines(f) : C
+#     Produce co-expression that produces logical lines of a CSV file
+#     - f: file opened for reading
+#     - Actually, this is a synonym for tabularLines(f)
+#
+#   procedure csvFields(line, sep) : C
+#     Produce co-expression that produces fields from a logical line of a
+#     CSV file
+#     - line: logical line, s
+#     - sep : (optional) separator, c; defaults to ','
+#
+#   procedure getCSV(typeName, csvPath, colL, sep, dflt)
+#     Produce L of VNom from a CSV file
+#     - typeName: the string produced by vmsg(V, "type"), s
+#     - csvPath : the path to the comma-separated-values data file, s
+#     - colL    : (optional) columns to select, L of i
+#     - sep     : (optional) separators, c; defaults to ","
+#     - dflt    : (optional) default value for VNom fields, x
 #
 #   procedure tabularLines(f) : C
-#     Procduce co-expression that produces logical lines of a tabular file
-#     - f: test file opened for reading
+#     Produce co-expression that produces logical lines of a tabular file
+#     - f: file opened for reading
 #
 #   procedure tabularFields(line, sep) : C
-#     Procduce co-expression that produces fields from a logical line of a
+#     Produce co-expression that produces fields from a logical line of a
 #     tabular file
 #     - line: logical line, s
 #     - sep : (optional) separator, c; defaults to '\t'
 #
 #   procedure getTabular(typeName, tsvPath, colL, sep, dflt)
-#     Produce L of RecTable from a tabular file
-#     - typeName: the first result to be produced by RecTableType(T), s
+#     Produce L of VNom from a tabular file
+#     - typeName: the string produced by vmsg(V, "type"), s
 #     - tsvPath : the path to the tabular data file, s
 #     - colL    : (optional) columns to select, L of i
-#     - sep     : (optional) separators, c
-#     - dflt    : (optional) default value for RecTable fields, x
+#     - sep     : (optional) separators, c; defaults to '\t'
+#     - dflt    : (optional) default value for VNom fields, x
 #
 #   procedure iniLines(f) : C
-#     Procduce co-expression that produces logical lines of an INI file
+#     Produce co-expression that produces logical lines of an INI file
 #
 #   procedure iniFields(line) : C
-#     Procduce co-expression that produces fields from a logical line
+#     Produce co-expression that produces fields from a logical line
 #     of an INI file
 #
 #   procedure getIni(ini) : T (string -> T (string -> x))
 #     Produce a table of table from an INI file
 #
 ############################################################################
+# globals:
+#   g_Cerror - if defined, this C receives tables transmitted by _getTabular
+#              e.g., see procedure _flddDtFl_error(comment)
+############################################################################
 
-$ifndef _RecTable_
-$include "RecTable.icn"
-$endif
+$ifndef VNOM
+$include "vnom.icn"
+$endif # VNOM
+
+#$define DEBUG
 
 # FieldedData organizes functions that create co-expressions producing
 #   logical lines and fields within a logical line from tabular data
 record FieldedData(lines, fields) #: record holding two co-expression factories
+global csvLines
 
 # FieldedDataFactory produces FieldedData populated according to format;
 #   as of now, only "tabular" format is supported
 procedure FieldedDataFactory(format, filePath) #: produce FieldedData for format
+  initial {
+    csvLines := tabularLines
+    }
   close(open(\filePath, "r")) |
     stop( "FieldedDataFactory: Cannot open file for reading: " ||
           (\filePath | "&null") )
   return case format of {
     # eventually add support for CSV and who knows what else
+    "csv"     : FieldedData(csvLines, csvFields)
     "tabular" : FieldedData(tabularLines, tabularFields)
-    "ini" : FieldedData(iniLines, iniFields)
+    "ini"     : FieldedData(iniLines, iniFields)
     default : stop("FieldedDataFactory: Unknown format \"" || format || "\" for file " || filePath)
     }
 end
 
 # create co-expression that, for each activation, transmits to &source a
+#   field from a logical line of a comma-separated-values file
+procedure csvFields(line, sep) #: factory for C producing fields from a logical line of a CSV file
+  local field, source
+  /sep := ','
+  return create {
+      source := &source
+      every field := csvField(line, sep)
+        do {
+          field @source
+          }
+      # HACK transmit main to source to prevent resumption of csvField
+      #   because Icon has no cofail(C) function
+      repeat {
+        main @source
+        }
+    }
+end
+
+
+# create co-expression that, for each activation, transmits to &source a
 #   logical line of a tab-separated-values file
 procedure tabularLines(f) #: factory for C producing logical lines of a tabular file
-  local line
+  local line, frag, in_dquote
+  frag := line := ""
   return create
-    every line := !f
+    every frag := !f
       do {
-        line @ &source
+        line ||:=
+          if line == ""
+            then frag
+            else "\n" || frag
+        in_dquote := &null
+        line ? every upto('"')
+          do in_dquote := if /in_dquote then 1 else &null
+        if /in_dquote
+          then {
+            line @ &source
+            line := ""
+            }
       }
 end
 
@@ -108,86 +203,159 @@ procedure tabularFields(line, sep) #: factory for C producing fields from a logi
     }
 end
 
-procedure getTabular(typeName, tsvPath, colL, sep, dflt) #: Produce L of RecTable from a tabular file
-  # - typeName: the first result to be produced by RecTableType(T), s
+procedure getCSV(typeName, csvPath, colL, sep, dflt) #: Produce L of VNom from a CSV file
+  # - typeName: the first result to be produced by vmsg(V, "type"), s
+  # - csvPath : the path to the comma-separated-values data file, s
+  # - colL    : (optional) columns to use, L of i; default: use all columns
+  # - sep     : (optional) separators, c; default: ','
+  # - dflt    : (optional) default value for VNom fields, x
+  return _getSeparatedValues(typeName, csvPath, colL, sep, dflt, "csv")
+end
+
+procedure getTabular(typeName, tsvPath, colL, sep, dflt) #: Produce L of VNom from a tabular file
+  # - typeName: the first result to be produced by vmsg(V, "type"), s
   # - tsvPath : the path to the tabular data file, s
   # - colL    : (optional) columns to use, L of i; default: use all columns
   # - sep     : (optional) separators, c; default: '\t'
-  # - dflt    : (optional) default value for RecTable fields, x
+  # - dflt    : (optional) default value for VNom fields, x
+  return _getSeparatedValues(typeName, tsvPath, colL, sep, dflt, "tabular")
+end
+
+procedure _flddDtFl_error(comment)
+  local result, Cerror, imager
+  &error := 0
+  comment := \comment || "; " | ""
+  Cerror := variable("g_Cerror") | fail
+  imager := variable("ximage") | image
+  result := table()
+  result["comment"] := comment
+  result["errornumber"] := &errornumber # i: run-time error number
+  result["errortext"]   := &errortext   # s: run-time error message text
+  result["errorvalue"]  := &errorvalue  # x: run-time error offending value
+  result["string"]      :=
+    comment || "error " || &errornumber || " - \"" || &errortext ||
+    "\"; offending value `" || imager(&errorvalue) || "`"
+  errorclear()
+  result @Cerror
+end
+
+procedure _getSeparatedValues(typeName, inptPath, colL, sep, dflt, fmt) #: Helper to produce L of VNom from a CSV or tabular file
+  # - typeName: the first result to be produced by vmsg(V, "type"), s
+  # - inptPath : the path to the tabular data file, s
+  # - colL    : (optional) columns to use, L of i; default: use all columns
+  # - sep     : (optional) separators, c; default: '\t'
+  # - dflt    : (optional) default value for VNom fields, x
+  # - fmt     : (optional) "tabular" | "csv"; default: "tabular"
   local fieldedData # a FieldedData record having two C members: lines, fields
-  local resultL     # result, L of RecTable
+  local resultL     # result, L of VNom
   local lineC       # C producing logical lines of the tabular file
   local lineL       # one result produced by lineC
-  local lineFieldL  # list of fields in lineL
   local fieldC      # C producing logial fields of lineL
-  local RecTableC   # L @ RecTableC produces RecTable
-
-  local allocated
-  local collections
-  local regions
-  local storage
-  local i, gimme, f
+  local rsltV       # a VNom
+  local f           # input file specified by inptPath
+  local kL, kLtmp   # lists of result fields
+  local i           # scratch i for index
+  local comment
 
   /sep := '\t'
 
-  RecTableColTypeCheck(typeName, "string", "typeName")
-  RecTableColTypeCheck(tsvPath,  "string", "tsvPath" )
-
   $ifdef DEBUG
-  write("getTabular parsing ", tsvPath)
+    write(&errout, "getTabular parsing ", inptPath)
   $endif # DEBUG
-  fieldedData := FieldedDataFactory("tabular", tsvPath)
-  lineC := fieldedData.lines(open(tsvPath,"r"), sep) |
-    stop(&progname, ": failed to open tabular file ",tsvPath)
+  # produce record FieldedData(lines, fields)
+  #   A record that holds two co-expression factories
+  #   - lines  === csvLines  | tabularLines  | iniLines
+  #   - fields === csvFields | tabularFields | iniFields
+  fieldedData := FieldedDataFactory(fmt, inptPath)
+
+  # create lineC which produces lines from inptPath
+  lineC := fieldedData.lines(f := open(inptPath,"r"), sep) |
+    stop(&progname, ": failed to open tabular file ",inptPath)
+  # initialize list for results
   resultL := []
-  # Using first line, create C that will produce RecTable instances
+
+  # Using first line, construct a list of fields
+  #   from which to construct VNom instances
+  # fetch first line
   lineL := @lineC
-  lineFieldL := []
+  # create fieldC that produces fields parsed from line
   fieldC := fieldedData.fields(lineL)
-  while put(lineFieldL, @fieldC)
-  RecTableC :=
-    RecTableConstructorC(
-      typeName
-    , lineFieldL
-    , colL
-    , dflt
-    )
-  # defining NOHACK increases:
-  # - sys  time roughly 50%
-  # - real time roughly 60%
-  # - user time roughly 25%
-  #$define NOHACK
-  $ ifndef NOHACK
-  f := open(tsvPath,"r") |
-    stop(&progname, ": failed to open tabular file ",tsvPath)
-  $endif # NOHACK
-  # Using subsequent lines and RecTableC, produce RecTable instances
-  $ ifdef NOHACK
+  # create kLtmp to receive the produced fields
+  kLtmp := []
+  # put the fields generated by fieldC onto kLtmp
+  while put(kLtmp, main ~=== \@fieldC)
+  # create kL to be length of colL if supplied; else, length of kLtmp
+  kL := list(*(\colL) | *kLtmp)
+  # if caller did not supply colL (the field selector), fetch all columns
+  if /colL
+    then {
+      colL := list()
+      every i := 1 to *kL
+        do put(colL, i)
+      }
+  # fetch the column names, or fail after transmitting error to g_Cerror
+  &error := 1
+  every i := 1 to *kL
+    do kL[i] := kLtmp[colL[i]] | {
+      _flddDtFl_error(
+        "_getSeparatedValues(" || image(typeName) ||
+        ", " || inptPath ||
+        ", ...)@fieldedDataFile.icn: colL invalid or out of range"
+        )
+      fail
+      }
+  &error := 0
+
+  # Using subsequent lines and colL, produce VNom instances
+  # while next line may be generated
   while lineL := @lineC
-  $else # NOHACK not defined
-  read(f)
-  while lineL := read(f)
-  $endif # NOHACK
     do {
-      lineFieldL := []
-      lineL ? every fieldC := upto(sep) | 0
-            do {
-              put(lineFieldL, tab(fieldC))
-              pos(0) | move(1)
-              }
-      put(resultL, lineFieldL @ RecTableC)
+      # create fieldC that produces fields parsed from line
+      fieldC := fieldedData.fields(lineL)
+      # create kLtmp to receive the produced fields
+      kLtmp := []
+      # put the fields generated by fieldC onto kLtmp
+      while put(kLtmp, main ~=== \@fieldC)
+      # generate the fields from the line, selected and ordered by colL
+      fieldC := create kLtmp[!colL]
+      # instantiate VNom to hold the selected field values
+      rsltV := vnew(table(dflt), typeName)
+      # assign each (selected and ordered) key with the corresponding value
+      every vmsg(rsltV, "put", !kL, main ~=== \@fieldC)
+      # add to the result list, except discard when length check fails
+      if *kL = vmsg(rsltV, "*")
+        then put(resultL, rsltV)
+        else {
+          comment :=
+            "_getSeparatedValues(" || image(typeName) ||
+            ", " || inptPath ||
+            ", ...)@fieldedDataFile.icn: structure\n  " ||
+            image(lineL) ||
+            "    (expected " ||
+            *kL ||
+            " terms but found " ||
+            vmsg(rsltV, "*") ||
+            ")"
+          every comment ||:= "\n    " || vmsg(rsltV, "strings")
+          _flddDtFl_error(comment)
+          }
       $ifdef DEBUG
-      write("fields:")
-      every writes("  ",RecTableFields(resultL[-1]))
-      write()
-      write("values:")
-      every writes("  ",RecTableFieldVals(resultL[-1]))
-      write()
+        write(&errout, ximage(resultL[-1]))
+        write(&errout, "fields:")
+        every write(&errout, "#  ",vmsg(resultL[-1], "key"))
+        write(&errout, "values:")
+        every write(&errout, "!  ",vmsg(resultL[-1], "!"))
       $endif # DEBUG
     }
+
+  # close input file and produce list of results, if any
+  close(f)
   if *resultL > 0
     then return resultL
 end
+$ifdef DEBUG
+link ximage
+$endif # DEBUG
 
 # create co-expression that, for each activation, transmits to &source a
 #   "logical line" of an INI file; note that this is in fact a list
@@ -296,6 +464,45 @@ $ifdef DEBUG_getIni
   write(xencode(tbl_ini,StringFile(""),WriteString).s)
 $endif
   return tbl_ini
+end
+
+# procedure csvField is hacked out of Unicon procedure genCSV
+# by Steve Wampler, Rob Parlett, and others
+#   http://unicon.org/api/uni-api/file_str_util.html#genCSV.html
+procedure csvField(s, sep)
+    local WS, r, rslt
+    /sep := ","
+    WS := ' \t\n' -- sep  # Can't include separators in whitespace
+                          #  (The '\n' is a trick so there's always
+                          #  something at the end of the last field.)
+    (s || WS) ? {
+      while not pos(0)
+        do {
+          tab(many(WS))
+          if ="\""
+            then {    # Quoted string
+              r := ""
+              while r ||:= 1(tab(find("\"")), move(1))
+                do {
+                  if not ="\"" then break     # End of quoted string
+                  r ||:= "\""
+                  }
+              suspend 1(
+                rslt := (tab((upto(sep))|0)\1, r),
+                not (
+                  pos(0),
+                  move(-(1 + *WS)),
+                  ("\"" || WS) ~== move(1 + *WS),
+                  rslt == ""
+                  )
+                )
+                do move(1)
+              }
+            else
+              suspend trim(tab((upto(sep))|0)\1, WS)
+                do move(1)
+          }
+      }
 end
 
 $endif # _fieldedDataFile_

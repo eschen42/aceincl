@@ -50,13 +50,15 @@ with one addition:
 - [`baton.icn`](#batonicn)
   - Procedure to coordinate passing data from one process to another via a file-based buffer.
 
-- `baton_main.icn` - Procedures to use facilitate creation of processes that exchange data
-    with current process via batons.
+- `baton_main.icn`
+    - Procedures to use facilitate creation of processes that exchange data
+      with current process via batons.
     - [`baton_main`](#procedure-baton_mainargs--exit0--1) Procedure for creating executable to interface between a batons and a stream.
     - [`baton_flatware`](#procedure-baton_flatwareargs--fail--exit0--1) Procedure to access batons without translating an additional executable.
     - [`baton_crowbar`](#procedure-baton_crowbar--n--stop) Procedure to handle programming error by terminating program exection when `baton_flatware` is not linked.
 
-- [`batonsys.icn`](#batonsysicn) - Invoke process using batons to exchange input and output
+- [`batonsys.icn`](#batonsysicn)
+  - Invoke process using batons to exchange input and output
 
 - [`fieldedDataFile.icn`](#fieldeddatafileicn)
   - Procedures to produce logical lines or fields from formatted data files.
@@ -75,9 +77,6 @@ with one addition:
 
 - [`lindel.icn`](#lindelicn)
   - In-place delete or insert of a pseudo-section of L.
-
-- [`RecTable.icn`](#rectableicn)
-  - Procedures to produce/manipulate record-like tables.
 
 - [`rpn.icn`](#rpnicn)
   - Procedures to embed RPN-based (Forth-like) interpreter into Icon programs; can also be run in REPL.
@@ -99,6 +98,8 @@ with one addition:
   - Procedure to produce a value that can be read globally but can be reset only by the co-expression that set it it initially.
 
 - [Legacy Source Code Control](#legacy-source-code-control)
+
+- [Deprecated files](#deprecatedfiles)
 
 ---
 
@@ -512,18 +513,45 @@ or with
 
 Procedures to produce logical lines or fields from formatted data files.
 
+- See [`vnom.icn`](#vnomicn) for format of list items returned by `getCSV` and `getTabular`.
+
 #### record `FieldedData(lines, fields)`
 
 Produce record holding two co-expression factories:
 
-- `lines` === tabularLines | iniLines
-- `fields` === tabularFields | iniFields
+- `lines`  === csvLines  | tabularLines  | iniLines
+- `fields` === csvFields | tabularFields | iniFields
 
 ### procedure `FieldedDataFactory(format, filePath) : FieldedData`
 
 Produce a `FieldedData` record for `filePath` corresponding to format.
 
-- `format == ("tabular" | "ini")`
+- `format == "csv"    ` - a comma-separated values file
+- `format == "tabular"` - a tab-separated values file
+- `format == "ini"    ` - a Microsoft Windows INI formatted file
+
+### procedure `csvLines(f) : C`
+
+Factory for a co-expression producing logical lines of a CSV file `f`.
+
+- This is actually a synonym for `tabularLines`.
+
+### procedure `csvFields(line, sep) : C`
+
+Factory for a co-expression producing fields from a logical line of a CSV file:
+
+- `line` is a logical line produced by `csvLines`.
+- `sep` is the field separator; if omitted or `&null`, comma is used.
+
+### procedure `getCSV(typeName, csvPath, colL, sep, dflt) : L`
+
+Produce L of VNom from a CSV file
+
+- `typeName`: the string produced by `vmsg(V, "type")`, s
+- `csvPath` : the path to the CSV data file, s
+- `colL`    : (optional) columns to select, L of i
+- `sep`     : (optional) separators, c; default: comma
+- `dflt`    : (optional) default value for VNom fields, x
 
 ### procedure `tabularLines(f) : C`
 
@@ -533,17 +561,17 @@ Factory for a co-expression producing logical lines of a tabular file `f`.
 
 Factory for a co-expression producing fields from a logical line of a tabular file:
 - `line` is a logical line produced by `tabularLines`.
-- `sep` is the field separator; if omitted or &null, TAB is used.
+- `sep` is the field separator; if omitted or `&null`, TAB is used.
 
 ### procedure `getTabular(typeName, tsvPath, colL, sep, dflt) : L`
 
-Produce L of RecTable from a tabular file
+Produce L of VNom from a tabular file
 
-- `typeName`: the first result to be produced by RecTableType(T), s
+- `typeName`: the string produced by `vmsg(V, "type")`, s
 - `tsvPath` : the path to the tabular data file, s
 - `colL`    : (optional) columns to select, L of i
-- `sep`     : (optional) separators, c
-- `dflt`    : (optional) default value for RecTable fields, x
+- `sep`     : (optional) separators, c; default: TAB
+- `dflt`    : (optional) default value for VNom fields, x
 
 ### procedure `iniLines(f)` : C
 
@@ -774,84 +802,6 @@ Insert list `Lins` into `L` (in-place) before index `i`, producing `L`
 ### procedure `Lfind(L, x) : i1, i2, ...`
 
 Generate indices where `x` appears in `L`
-
----
-
-<a name="rectableicn"></a>
-
-## RecTable.icn
-
-Procedures to produce/manipulate record-like tables.
-
-See also: [`vnom.icn`](#vnomicn) below for another, potentially more flexible approach.
-
-Used by [`fieldedDataFile.icn`](#fieldeddatafileicn) above because, when it was written, `vnom.icn` had not yet been created.
-
-### procedure `RecTable(rec_name_s, rec_fields_L, rec_data_L, rec_default_x) : T`
-
-Produce a table with record-like aspects:
-
-- `rec_name_s`:    the "type" of the RecTable
-- `rec_fields_L`:  a list of the field names
-- `rec_data_L`:    an optional list of values to assign to the fields
-- `rec_col_iL`:    an optional list of column numbers to choose;
-                   defaults to all
-- `rec_default_x`: default value for table members
-
-### procedure `RecTableType(x) : s1, S2, s3, ...`
-
-For RecTable, produce:
-
-- name
-- set of all fields
-- each field
-
-For non-RecTable, return type(x).
-
-### procedure `RecTableFields(x) : s1, ...`
-
-Produce RecTable's field names.
-
-- This will fail for a non-RecTable.
-
-### procedure `RecTableFieldsL(x) : `L
-
-Return a list of the values produced by RecTableFields(x).
-
-- This returns an empty list when x is not a RecTable instance.
-
-### procedure `RecTableFieldVals(x) : s1, ...`
-
-Produce RecTable's field values.
-
-- This will fail for a non-RecTable.
-
-### procedure `RecTableFieldValsL(x) : L`
-
-Return a list of the values produced by RecTableFieldVals(x).
-
-- This returns an empty list when x is not a RecTable instance.
-
-### procedure `RecTableColTypeCheck(x, type_name, col_name, preamble) : x`
-
-Return x, except abort when x is not instance of `type_name`:
-
-- `x`        : value whose type is to be checked
-- `type_name`: expected string for RecTableType(x)
-- `col_name` : name of identifier-under-test
-- `preamble` : initial string for error message; defaults to value of name
-             RecTablePreamble.
-
-### procedure `RecTableConstructorC(rec_name_s, rec_fields_L, rec_default_x) : C`
-
-Produce a C that, when receiving a transmitted list of values (of the
-same length as `rec_fields_L`), produces a RecTable instance:
-
-- `rec_name_s`    the "type" of the RecTable
-- `rec_fields_L`  a list of the field names
-- `rec_col_iL`    an optional list of column numbers to choose;
-                  defaults to all
-- `rec_default_x` default value for table members
 
 ---
 
@@ -1339,3 +1289,89 @@ If there are commits to preserve, the process is more involved; see the referenc
    `  git push --set-upstream origin master`<br />
    or
    `  git push --set-upstream origin main`
+
+---
+
+<a name="deprecatedfiles"></a>
+
+## Deprecated files
+
+---
+
+<a name="rectableicn"></a>
+
+### RecTable.icn
+
+- This file is deprecated; VNom is more useful.
+
+Procedures to produce/manipulate record-like tables.
+
+See also: [`vnom.icn`](#vnomicn) below for another, potentially more flexible approach.
+
+Used by [`fieldedDataFile.icn`](#fieldeddatafileicn) above because, when it was written, `vnom.icn` had not yet been created.
+
+#### procedure `RecTable(rec_name_s, rec_fields_L, rec_data_L, rec_default_x) : T`
+
+Produce a table with record-like aspects:
+
+- `rec_name_s`:    the "type" of the RecTable
+- `rec_fields_L`:  a list of the field names
+- `rec_data_L`:    an optional list of values to assign to the fields
+- `rec_col_iL`:    an optional list of column numbers to choose;
+                   defaults to all
+- `rec_default_x`: default value for table members
+
+#### procedure `RecTableType(x) : s1, S2, s3, ...`
+
+For RecTable, produce:
+
+- name
+- set of all fields
+- each field
+
+For non-RecTable, return type(x).
+
+#### procedure `RecTableFields(x) : s1, ...`
+
+Produce RecTable's field names.
+
+- This will fail for a non-RecTable.
+
+#### procedure `RecTableFieldsL(x) : `L
+
+Return a list of the values produced by RecTableFields(x).
+
+- This returns an empty list when x is not a RecTable instance.
+
+#### procedure `RecTableFieldVals(x) : s1, ...`
+
+Produce RecTable's field values.
+
+- This will fail for a non-RecTable.
+
+#### procedure `RecTableFieldValsL(x) : L`
+
+Return a list of the values produced by RecTableFieldVals(x).
+
+- This returns an empty list when x is not a RecTable instance.
+
+#### procedure `RecTableColTypeCheck(x, type_name, col_name, preamble) : x`
+
+Return x, except abort when x is not instance of `type_name`:
+
+- `x`        : value whose type is to be checked
+- `type_name`: expected string for RecTableType(x)
+- `col_name` : name of identifier-under-test
+- `preamble` : initial string for error message; defaults to value of name
+             RecTablePreamble.
+
+#### procedure `RecTableConstructorC(rec_name_s, rec_fields_L, rec_default_x) : C`
+
+Produce a C that, when receiving a transmitted list of values (of the
+same length as `rec_fields_L`), produces a RecTable instance:
+
+- `rec_name_s`    the "type" of the RecTable
+- `rec_fields_L`  a list of the field names
+- `rec_col_iL`    an optional list of column numbers to choose;
+                  defaults to all
+- `rec_default_x` default value for table members

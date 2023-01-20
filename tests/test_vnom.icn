@@ -28,7 +28,7 @@ procedure main()
   V := vnew(, "vtype", , , , "vkind")
   k := vmsg(V, "metatable")
   $ifdef VNOM_MAIN_XIMAGE
-    write("ximage(k):\n", ximage(k))
+    write(&errout, "ximage(k):\n", ximage(k))
   $endif
   L := []
   every v := key(k) do put(L, v)
@@ -42,7 +42,7 @@ procedure main()
   vmsg(V, "put", "coda", "tail")
   every write(vmsg(V, "strings"))
   $ifdef VNOM_MAIN_XIMAGE
-    write("ximage(V):\n", ximage(V))
+    write(&errout, "ximage(V):\n", ximage(V))
   $endif
   write("bykey \"delete3\": " , vmsg(V, "bykey" , "delete3"))
   vmsg(V, "delbykey", "delete3")
@@ -52,23 +52,22 @@ procedure main()
   vmsg(V, "delbykey", "coda")
   Vcopy := vmsg(V, "copy")
   $ifdef VNOM_MAIN_XIMAGE
-    write("ximage(Vcopy):\n", ximage(Vcopy))
+    write(&errout, "ximage(Vcopy):\n", ximage(Vcopy))
   $endif
   $ifdef VNOM_MAIN_CODEOBJ
-    write(encode(V))
+    write(&errout, encode(V))
   $endif
   $ifdef VNOM_MAIN_CODEOBJ
-    write(encode(Vcopy))
+    write(&errout, encode(Vcopy))
   $endif
   v := create write(" --> ", vmsg(V, "!"))
   k := create writes(vmsg(V, "key"))
   while @k do @v
   $ifdef VNOM_MAIN_XIMAGE
-    write(ximage(vmsg(V, "keylist")))
-  $else
-    v := vmsg(V, "keylist")
-    write("keylist --> ", (image(v) ? tab(upto('_'))), " of ", *v)
+    write(&errout, ximage(vmsg(V, "keylist")))
   $endif
+  v := vmsg(V, "keylist")
+  write("keylist --> ", (image(v) ? tab(upto('_'))), " of ", *v)
   write("byrank 1: ", vmsg(V, "byrank", 1))
   write("bykey 1: " , vmsg(V, "bykey" , 1))
   $ifdef VNOM_MAIN_XCODE
@@ -77,14 +76,14 @@ procedure main()
   write("There are ", vmsg(V, "*"), " values in V")
   write("pull(V) ", vmsg(V, "pull"))
   $ifdef VNOM_MAIN_XIMAGE
-    write("ximage(V):\n", ximage(V))
+    write(&errout, "ximage(V):\n", ximage(V))
   $endif
   write("There are ", vmsg(V, "*"), " values in V")
   every write("intersecting key: ", image(vmsg(V, "key")) == image(vmsg(Vcopy, "key")))
   write("pop(V) ", vmsg(V, "pop"))
   write("There are ", vmsg(V, "*"), " values in V")
   $ifdef VNOM_MAIN_XIMAGE
-    write("ximage(Vcopy):\n", ximage(Vcopy))
+    write(&errout, "ximage(Vcopy):\n", ximage(Vcopy))
   $endif
   v := ["kind", "type", "id", "image"]
   write("\nPrincipal properties of V")
@@ -103,7 +102,7 @@ procedure main()
   k := create writes(vmsg(V, "key"))
   while @k do @v
 
-  V := vnew()
+  V := vnew(table(1)) # specify a default value other than &null
   vmsg(V, "put", "xyzzy", "you are in a maze of little twisty passages")
   vmsg(V, "put", "x", table())
   V["x", "foo"] := "bar"

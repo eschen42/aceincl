@@ -1,16 +1,18 @@
 # assume that LPATH includes ..
 
-$include "RecTable.icn"
 $include "fieldedDataFile.icn"
 $include "wora.icn"
 $include "fileDirIo.icn"
+$include "vnom.icn"
 $define prog_dir_path prog_path_parts() || path_separator()
 
 link ximage
+global g_Cerror
 
 procedure main()
   local fieldedData, f_ce, l, l1, colHeader, col, l_ce, ini
-  local f, filePath, ion_count, val
+  local f, filePath, ion_count, val, i, s
+  @(g_Cerror := create stop(ximage(@&source)))
 
   # exercise procedure getIni
   ini := prog_dir_path || "test_fieldedDataFile.ini"
@@ -56,6 +58,25 @@ procedure main()
     if ini["univariate", "column_count"] ~= col
       then stop("unexpected number of columns from tabular data file")
   }
+  close(f)
   if ini["univariate", "ion_count"] ~= ion_count
     then stop("unexpected number of lines from tabular data file")
+  l := getTabular("testRecTable", "test_fieldedDataFile.tab")
+  i := 0
+  while l1 := pop(l)
+    do {
+      write("from getTabular(\"testRecTable\", \"test_fieldedDataFile.tab\"): List member ", i +:= 1)
+      every write("  ", vmsg(l1, "strings"))
+      }
+  every s := !["test_fieldedDataFile_01.csv", "test_fieldedDataFile_02.csv"]
+    do {
+      l := getCSV("testRecTable", s)
+      i := 0
+      while l1 := pop(l)
+        do {
+          write("from getCSV(\"testRecTable\", \"",
+            s, "\"): List member ", i +:= 1)
+          every write("  ", vmsg(l1, "strings"))
+          }
+      }
 end

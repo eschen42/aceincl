@@ -33,3 +33,67 @@ T1 := table(&null)
 name	polarity	mz	mzMin	mzMax	rt	rtMin	rtMax
 hello	pos	400.0	399.7	400.2	120.3	120.1	120.3
 world	neg	700.0	699.7	700.2	220.3	220.1	220.3
+from getTabular("testRecTable", "test_fieldedDataFile.tab"): List member 1
+  name: hello
+  polarity: pos
+  mz: 400.0
+  mzMin: 399.7
+  mzMax: 400.2
+  rt: 120.3
+  rtMin: 120.1
+  rtMax: 120.3
+from getTabular("testRecTable", "test_fieldedDataFile.tab"): List member 2
+  name: world
+  polarity: neg
+  mz: 700.0
+  mzMin: 699.7
+  mzMax: 700.2
+  rt: 220.3
+  rtMin: 220.1
+  rtMax: 220.3
+from getCSV("testRecTable", "test_fieldedDataFile_01.csv"): List member 1
+  name: hello
+  polarity: pos
+  mz: 400
+  mzMin: 399.7
+  mzMax: 400.2
+  rt: 120.3
+  rtMin: 120.1
+  rtMax: 120.3
+from getCSV("testRecTable", "test_fieldedDataFile_01.csv"): List member 2
+  name: world
+  polarity: neg
+  mz: 700
+  mzMin: 699.7
+  mzMax: 700.2
+  rt: 220.3
+  rtMin: 220.1
+  rtMax: 220.3
+from getCSV("testRecTable", "test_fieldedDataFile_02.csv"): List member 1
+  name: hello
+  polarity: pos
+  mz: 400
+  mzMin: 399.7
+  mzMax: 400.2
+  rt: 120.3
+  rtMin: 120.1
+  rtMax: 120.3
+from getCSV("testRecTable", "test_fieldedDataFile_02.csv"): List member 2
+  name: split
+line
+  polarity: neg
+  mz: 700
+  mzMin: 699.7
+  mzMax: 700.2
+  rt: 220.3
+  rtMin: 220.1
+  rtMax: 220.3
+from getCSV("testRecTable", "test_fieldedDataFile_02.csv"): List member 3
+  name: world
+  polarity: neg
+  mz: 700
+  mzMin: 699.7
+  mzMax: 700.2
+  rt: 220.3
+  rtMin: 220.1
+  rtMax: 220.3

@@ -474,14 +474,14 @@ procedure sl3msg(cnxn, command, arg1, arg2, arg3)
               }
             else { # command has PreparedStatement as its Kind
               command := sl3_bind_parms(command, errC) | {
-              sl3_transmit(
-                "sl3msg: failure to bind params to command: " ||
-                command["?"],
-                errC
-                )
-              fail
-              }
-              SL3_TRACE(&errout, image(command["?"]))
+                sl3_transmit(
+                  "sl3msg: failure to bind params to command: " ||
+                  command,
+                  errC
+                  )
+                fail
+                }
+              SL3_TRACE(&errout, image(command))
               }
         "string" : {
           SL3_TRACE(&errout, command)
